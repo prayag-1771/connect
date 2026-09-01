@@ -96,6 +96,25 @@ class PairingRepository @Inject constructor(
     }
 
     /**
+     * Ends a pairing for both people.
+     *
+     * Deletes the pairing document rather than removing yourself from its
+     * member list, because security rules only let you write your own user
+     * document — there is no way to clear the pairing id off theirs.
+     *
+     * Deleting works because everything reads through that document. Their
+     * stale pairing id then points at nothing, which resolves to null, which
+     * puts them back on the pairing screen exactly as intended. Creating or
+     * joining a new invite overwrites the stale id.
+     */
+    suspend fun leave(uid: String, pairingId: String): Result<Unit> = runCatching {
+        firestore.runBatch { batch ->
+            batch.delete(pairings.document(pairingId))
+            batch.update(users.document(uid), "pairingId", null)
+        }.await()
+    }
+
+    /**
      * Six characters from an alphabet with I, O, 0 and 1 removed, because these
      * codes get read aloud and those four are the ones people mishear.
      */

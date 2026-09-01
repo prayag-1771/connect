@@ -14,6 +14,8 @@ class AuthRepository @Inject constructor(
 ) {
     val currentUid: String? get() = auth.currentUser?.uid
 
+    val currentEmail: String? get() = auth.currentUser?.email
+
     /** Emits the signed-in uid, or null when signed out. */
     val uidFlow: Flow<String?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.uid) }
