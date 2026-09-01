@@ -38,9 +38,10 @@ class RootViewModel @Inject constructor(
 
     init {
         // Closes the gap the fifteen-minute periodic worker leaves. While the
-        // app is open a Firestore listener costs nothing extra, so the widget
-        // tracks the partner's latest photo in near real time.
-        viewModelScope.launch { widgetLiveUpdater.run() }
+        // app is open these listeners cost nothing extra, so photos and
+        // drawings register in near real time instead of on the next sync.
+        viewModelScope.launch { widgetLiveUpdater.watchMoments() }
+        viewModelScope.launch { widgetLiveUpdater.watchDrawings() }
     }
 
     /**

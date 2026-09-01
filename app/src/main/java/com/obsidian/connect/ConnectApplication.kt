@@ -5,7 +5,9 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.obsidian.connect.messaging.Notifications
 import com.obsidian.connect.sync.SyncScheduler
+import com.obsidian.connect.widget.DrawingBubble
 import com.obsidian.connect.widget.ScheduleBoundaryReceiver
+import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -32,6 +34,10 @@ class ConnectApplication : Application(), Configuration.Provider {
 
         // Flips the watch face over when the active window opens or closes.
         ScheduleBoundaryReceiver.schedule(this)
+
+        // The indicator is a window owned by this process, so it dies with it.
+        // If something is still unseen, put it back.
+        if (WidgetCaptionStore.hasNewDrawing(this)) DrawingBubble.show(this)
     }
 
     override val workManagerConfiguration: Configuration

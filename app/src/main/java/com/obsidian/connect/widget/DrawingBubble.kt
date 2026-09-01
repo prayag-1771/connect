@@ -69,12 +69,16 @@ object DrawingBubble {
             overlayType(),
             // NOT_FOCUSABLE so it never steals the keyboard or the back button
             // from whatever is underneath; it is an indicator, not a dialog.
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            //
+            // LAYOUT_NO_LIMITS is deliberately absent: with it the window can
+            // be positioned under the status bar, where the light is hidden by
+            // the clock and battery icons.
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.END
-            y = (EDGE_OFFSET_DP * app.resources.displayMetrics.density).toInt()
+            x = (EDGE_MARGIN_DP * app.resources.displayMetrics.density).toInt()
+            y = (TOP_MARGIN_DP * app.resources.displayMetrics.density).toInt()
         }
 
         runCatching { windows.addView(bubble, params) }
@@ -99,5 +103,8 @@ object DrawingBubble {
         }
 
     private const val BUBBLE_DP = 44
-    private const val EDGE_OFFSET_DP = 120
+
+    /** Just inside the top-right corner, clear of the status bar. */
+    private const val EDGE_MARGIN_DP = 6
+    private const val TOP_MARGIN_DP = 6
 }

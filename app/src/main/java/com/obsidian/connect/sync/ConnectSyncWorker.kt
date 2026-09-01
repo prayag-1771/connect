@@ -127,7 +127,11 @@ class ConnectSyncWorker @AssistedInject constructor(
 
         if (newestFromPartner <= syncState.lastSeenStrokeAt) return
 
-        syncState.lastSeenStrokeAt = newestFromPartner
+        // The watermark is deliberately NOT advanced here. Showing the light is
+        // not the same as the drawing having been seen, and advancing it on
+        // show meant the indicator could never appear a second time — and would
+        // never come back at all if the process died while it was up.
+        // Only actually looking at the drawing marks it seen.
         WidgetCaptionStore.writeNewDrawing(applicationContext, true)
 
         // The indicator lives on the screen, not on the widget, so it has to
