@@ -10,6 +10,7 @@ import android.provider.AlarmClock
 import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
+import com.obsidian.connect.HomeTab
 import com.obsidian.connect.MainActivity
 import com.obsidian.connect.chat.QuickReplyActivity
 import com.obsidian.connect.R
@@ -203,6 +204,9 @@ class WatchWidgetProvider : AppWidgetProvider() {
         private fun openApp(context: Context): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                // Tapping a face on the home screen is nearly always about
+                // saying something, not about taking a photo.
+                putExtra(MainActivity.EXTRA_TAB, HomeTab.Chat.name)
             }
             return PendingIntent.getActivity(
                 context,

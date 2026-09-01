@@ -13,6 +13,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
@@ -25,7 +26,7 @@ import com.obsidian.connect.profile.ProfileScreen
 import com.obsidian.connect.reminders.RemindersScreen
 import com.obsidian.connect.send.CaptureScreen
 
-private enum class HomeTab(val label: String, val icon: ImageVector) {
+enum class HomeTab(val label: String, val icon: ImageVector) {
     Capture("Send", Icons.Filled.PhotoCamera),
     Chat("Chat", Icons.AutoMirrored.Outlined.Chat),
     Draw("Draw", Icons.Outlined.Brush),
@@ -41,11 +42,22 @@ private enum class HomeTab(val label: String, val icon: ImageVector) {
  * open and keep the sensor powered while the reminder list is on screen.
  */
 @Composable
-fun HomeScreen(modifier: Modifier = Modifier) {
+fun HomeScreen(
+    modifier: Modifier = Modifier,
+    requestedTab: HomeTab? = null,
+    requestId: Int = 0,
+) {
+    val tabs = HomeTab.entries
+
     // Stored as an index rather than the enum itself, because rememberSaveable
     // can only persist what goes into a Bundle.
-    var selected by rememberSaveable { mutableIntStateOf(0) }
-    val tabs = HomeTab.entries
+    var selected by rememberSaveable { mutableIntStateOf(tabs.indexOf(HomeTab.Chat)) }
+
+    // Keyed on the request id, not the tab, so tapping the widget twice still
+    // brings you back here after you have navigated elsewhere in between.
+    LaunchedEffect(requestId) {
+        requestedTab?.let { selected = tabs.indexOf(it) }
+    }
 
     Scaffold(
         modifier = modifier,
