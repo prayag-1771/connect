@@ -31,7 +31,9 @@ android {
             )
         }
         debug {
-            applicationIdSuffix = ".debug"
+            // No applicationIdSuffix on purpose. A suffix changes the package
+            // name, and the google-services plugin then demands a second app
+            // registered in the Firebase console or the build fails outright.
             versionNameSuffix = "-debug"
         }
     }
