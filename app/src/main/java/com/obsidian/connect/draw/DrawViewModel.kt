@@ -9,12 +9,10 @@ import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.core.model.Stroke
 import com.obsidian.connect.core.model.StrokePoint
 import com.obsidian.connect.sync.SyncState
-import com.obsidian.connect.widget.StrokeRasterizer
 import com.obsidian.connect.widget.WatchWidgetProvider
 import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,7 +24,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -58,12 +55,6 @@ class DrawViewModel @Inject constructor(
         viewModelScope.launch {
             strokes.collect { current ->
                 if (current.isEmpty()) return@collect
-
-                // Keep the rasterised copy current so the overlay opens
-                // instantly from a home screen with nothing to fetch.
-                withContext(Dispatchers.Default) {
-                    StrokeRasterizer.render(context, current)
-                }
 
                 // Looking at the canvas counts as having seen it, so the blue
                 // light goes out rather than announcing something already read.

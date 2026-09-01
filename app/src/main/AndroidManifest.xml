@@ -15,6 +15,22 @@
         <intent>
             <action android:name="android.intent.action.SET_ALARM" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+
+        <!--
+          Named explicitly as a last resort. Several OEM clock apps ship no
+          SHOW_ALARMS filter at all, so intent-based discovery finds nothing
+          and only their launcher entry can be opened.
+        -->
+        <package android:name="com.google.android.deskclock" />
+        <package android:name="com.android.deskclock" />
+        <package android:name="com.oneplus.deskclock" />
+        <package android:name="com.oplus.alarmclock" />
+        <package android:name="com.coloros.alarmclock" />
+        <package android:name="com.sec.android.app.clockpackage" />
     </queries>
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -64,7 +80,7 @@
             android:launchMode="singleTop"
             android:noHistory="true"
             android:taskAffinity=""
-            android:theme="@style/Theme.Connect.QuickReply" />
+            android:theme="@style/Theme.Connect.Overlay" />
 
         <receiver
             android:name=".widget.MomentWidgetReceiver"

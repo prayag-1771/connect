@@ -64,7 +64,7 @@
         android:id="@+id/watch_drawing_glow"
         android:layout_width="64dp"
         android:layout_height="64dp"
-        android:layout_gravity="top|end"
+        android:layout_gravity="top|center_horizontal"
         android:src="@drawable/drawing_glow"
         android:contentDescription="@string/watch_widget_drawing"
         android:visibility="gone" />

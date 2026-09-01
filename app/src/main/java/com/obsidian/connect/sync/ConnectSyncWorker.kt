@@ -13,7 +13,6 @@ import com.obsidian.connect.core.data.StrokeRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.messaging.Notifications
 import com.obsidian.connect.widget.MomentWidgetUpdater
-import com.obsidian.connect.widget.StrokeRasterizer
 import com.obsidian.connect.widget.WatchWidgetProvider
 import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.assisted.Assisted
@@ -111,11 +110,10 @@ class ConnectSyncWorker @AssistedInject constructor(
     }
 
     /**
-     * Lights the blue corner when the other person has drawn something.
+     * Lights the blue indicator when the other person has drawn something.
      *
-     * The canvas is rasterised here rather than when the overlay opens, so a
-     * tap on that light shows the drawing immediately instead of waiting on a
-     * network round trip from a home screen.
+     * Only the flag is stored. The overlay paints the strokes itself from the
+     * local cache when opened, so there is nothing to pre-render here.
      */
     private suspend fun syncDrawing(pairingId: String, uid: String) {
         val strokes = strokeRepository.latest(pairingId)
@@ -128,7 +126,6 @@ class ConnectSyncWorker @AssistedInject constructor(
 
         if (newestFromPartner <= syncState.lastSeenStrokeAt) return
 
-        StrokeRasterizer.render(applicationContext, strokes)
         syncState.lastSeenStrokeAt = newestFromPartner
         WidgetCaptionStore.writeNewDrawing(applicationContext, true)
         WatchWidgetProvider.refreshAll(applicationContext)

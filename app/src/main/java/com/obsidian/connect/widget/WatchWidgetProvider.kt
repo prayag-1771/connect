@@ -180,24 +180,47 @@ class WatchWidgetProvider : AppWidgetProvider() {
         /**
          * Opens the phone's clock app.
          *
-         * ACTION_SHOW_ALARMS is the only documented way to reach it without
-         * knowing the OEM's package name, which differs on every device. If
-         * nothing handles it — rare, but possible on a stripped ROM — falling
-         * back to our own app is better than a tap that does nothing.
+         * Deliberately not just firing ACTION_SHOW_ALARMS. OnePlus resolves that
+         * to `com.oplus.alarmclock.cts.HandleApiActivity` — a stub that exists to
+         * satisfy the compatibility test suite and opens nothing. The intent
+         * launches, succeeds, and the user sees no clock.
+         *
+         * So the action is used only to *identify* which package is the clock,
+         * and what actually gets launched is that package's launcher entry,
+         * which is guaranteed to be the real UI.
          */
         private fun openClock(context: Context): PendingIntent {
-            val clock = Intent(AlarmClock.ACTION_SHOW_ALARMS)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-            val resolves = clock.resolveActivity(context.packageManager) != null
-            if (!resolves) return openApp(context)
-
+            val intent = clockIntent(context) ?: return openApp(context)
             return PendingIntent.getActivity(
                 context,
                 CLOCK_REQUEST,
-                clock,
+                intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
+        }
+
+        private fun clockIntent(context: Context): Intent? {
+            val pm = context.packageManager
+
+            val candidates = buildList {
+                pm.resolveActivity(Intent(AlarmClock.ACTION_SHOW_ALARMS), 0)
+                    ?.activityInfo
+                    ?.packageName
+                    ?.let(::add)
+                addAll(KNOWN_CLOCK_PACKAGES)
+            }
+
+            candidates.forEach { pkg ->
+                pm.getLaunchIntentForPackage(pkg)?.let {
+                    return it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+
+            // Nothing launchable found. The bare action is still better than
+            // nothing on a device that does implement it properly.
+            val showAlarms = Intent(AlarmClock.ACTION_SHOW_ALARMS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            return showAlarms.takeIf { pm.resolveActivity(it, 0) != null }
         }
 
         private fun openApp(context: Context): PendingIntent {
@@ -219,5 +242,15 @@ class WatchWidgetProvider : AppWidgetProvider() {
         private const val CLOCK_REQUEST = 1
         private const val REPLY_REQUEST = 2
         private const val DRAWING_REQUEST = 3
+
+        /** Checked in order when the resolved package has no launcher entry. */
+        private val KNOWN_CLOCK_PACKAGES = listOf(
+            "com.google.android.deskclock",
+            "com.android.deskclock",
+            "com.oneplus.deskclock",
+            "com.oplus.alarmclock",
+            "com.coloros.alarmclock",
+            "com.sec.android.app.clockpackage",
+        )
     }
 }
