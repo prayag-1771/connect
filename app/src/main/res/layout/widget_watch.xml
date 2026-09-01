@@ -15,19 +15,22 @@
     android:layout_height="match_parent"
     android:id="@+id/watch_root">
 
+    <!--
+      fitCenter, not centerCrop. The bitmap arrives already cut to a circle
+      with transparent corners, so cropping it would slice the face.
+    -->
     <ImageView
         android:id="@+id/watch_photo"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="centerCrop"
+        android:scaleType="fitCenter"
+        android:adjustViewBounds="true"
         android:contentDescription="@string/watch_widget_photo" />
 
-    <ImageView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:src="@drawable/watch_scrim"
-        android:contentDescription="@null" />
-
+    <!--
+      Sits over the photo and fills the same square, so its dial ring lands on
+      the edge of the circle rather than somewhere arbitrary.
+    -->
     <AnalogClock
         android:id="@+id/watch_clock"
         android:layout_width="match_parent"
@@ -42,7 +45,6 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="6dp"
         android:paddingHorizontal="8dp"
         android:paddingVertical="2dp"
         android:background="#99000000"

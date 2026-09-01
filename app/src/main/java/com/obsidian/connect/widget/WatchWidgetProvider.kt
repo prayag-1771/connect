@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
 import com.obsidian.connect.MainActivity
@@ -29,8 +30,27 @@ class WatchWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray,
     ) {
         appWidgetIds.forEach { id ->
-            appWidgetManager.updateAppWidget(id, buildViews(context))
+            appWidgetManager.updateAppWidget(id, buildViews(context, appWidgetManager, id))
         }
+    }
+
+    /**
+     * Re-renders when the widget is resized.
+     *
+     * The face is rasterised to a fixed pixel size, so a widget stretched after
+     * placement would otherwise keep displaying the bitmap cut for its old
+     * dimensions and look soft.
+     */
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle,
+    ) {
+        appWidgetManager.updateAppWidget(
+            appWidgetId,
+            buildViews(context, appWidgetManager, appWidgetId),
+        )
     }
 
     companion object {
@@ -46,21 +66,27 @@ class WatchWidgetProvider : AppWidgetProvider() {
             val ids = manager.getAppWidgetIds(
                 ComponentName(context, WatchWidgetProvider::class.java),
             )
-            if (ids.isEmpty()) return
-
-            val views = buildViews(context)
-            ids.forEach { manager.updateAppWidget(it, views) }
+            ids.forEach { manager.updateAppWidget(it, buildViews(context, manager, it)) }
         }
 
-        private fun buildViews(context: Context): RemoteViews {
+        private fun buildViews(
+            context: Context,
+            manager: AppWidgetManager,
+            appWidgetId: Int,
+        ): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_watch)
 
-            // Same bound as the Glance widget. RemoteViews cross a Binder
-            // transaction capped near 1MB, and an oversized bitmap fails
-            // silently — the widget just does not draw.
-            val bitmap = WidgetImageStore.decode(context, MAX_DIMENSION_PX)
-            if (bitmap != null) {
-                views.setImageViewBitmap(R.id.watch_photo, bitmap)
+            val facePx = WatchFaceRenderer.sizeFor(requestedFacePx(context, manager, appWidgetId))
+            val photo = WidgetImageStore.decode(context, facePx)
+
+            if (photo == null) {
+                views.setViewVisibility(R.id.watch_photo, View.GONE)
+            } else {
+                views.setViewVisibility(R.id.watch_photo, View.VISIBLE)
+                views.setImageViewBitmap(
+                    R.id.watch_photo,
+                    WatchFaceRenderer.circularFace(photo, facePx),
+                )
             }
 
             val caption = WidgetCaptionStore.read(context)
@@ -75,6 +101,27 @@ class WatchWidgetProvider : AppWidgetProvider() {
             return views
         }
 
+        /**
+         * How large this particular widget actually is, in pixels.
+         *
+         * Rendering a fixed size for every instance would either waste memory
+         * on a small widget or look soft on a large one. The reported value is
+         * in dp and can be missing, so it falls back to a sensible default.
+         */
+        private fun requestedFacePx(
+            context: Context,
+            manager: AppWidgetManager,
+            appWidgetId: Int,
+        ): Int {
+            val options = manager.getAppWidgetOptions(appWidgetId)
+            val widthDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
+            val heightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0)
+
+            // The face is a circle, so the limiting dimension is the smaller one.
+            val dp = listOf(widthDp, heightDp).filter { it > 0 }.minOrNull() ?: DEFAULT_FACE_DP
+            return (dp * context.resources.displayMetrics.density).toInt()
+        }
+
         private fun openApp(context: Context): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -87,6 +134,6 @@ class WatchWidgetProvider : AppWidgetProvider() {
             )
         }
 
-        private const val MAX_DIMENSION_PX = 720
+        private const val DEFAULT_FACE_DP = 160
     }
 }
