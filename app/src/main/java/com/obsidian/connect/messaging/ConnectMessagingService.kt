@@ -4,7 +4,7 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.UserRepository
-import com.obsidian.connect.work.MomentDownloadWorker
+import com.obsidian.connect.sync.SyncScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -13,11 +13,15 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Receives the push that tells this device a new photo is waiting.
+ * Receives pushes, on the day there is anything to send them.
  *
- * Messages arrive as data-only payloads on purpose. A notification payload gets
- * swallowed by the system tray whenever the app is backgrounded and this class
- * never runs at all — which is precisely the case the widget exists for.
+ * Nothing currently does. Sending to another user's device needs a trusted
+ * server, and Cloud Functions require a paid plan, so the app polls instead —
+ * see ConnectSyncWorker.
+ *
+ * This is kept deliberately. A push here just triggers the same sync the
+ * worker runs, so deploying the functions later turns polling into instant
+ * delivery without touching the client.
  */
 @AndroidEntryPoint
 class ConnectMessagingService : FirebaseMessagingService() {
@@ -44,15 +48,7 @@ class ConnectMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         when (message.data[KEY_TYPE]) {
-            TYPE_MOMENT -> {
-                val storagePath = message.data[KEY_STORAGE_PATH] ?: return
-                MomentDownloadWorker.enqueue(
-                    context = applicationContext,
-                    storagePath = storagePath,
-                    caption = message.data[KEY_CAPTION].orEmpty(),
-                    senderName = message.data[KEY_SENDER_NAME].orEmpty(),
-                )
-            }
+            TYPE_MOMENT -> SyncScheduler.now(applicationContext)
 
             TYPE_NUDGE -> {
                 // Only reached with the app in the foreground. Backgrounded,
@@ -71,9 +67,6 @@ class ConnectMessagingService : FirebaseMessagingService() {
 
     private companion object {
         const val KEY_TYPE = "type"
-        const val KEY_STORAGE_PATH = "storagePath"
-        const val KEY_CAPTION = "caption"
-        const val KEY_SENDER_NAME = "senderName"
 
         const val KEY_REMINDER_ID = "reminderId"
 

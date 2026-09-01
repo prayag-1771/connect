@@ -6,75 +6,101 @@ Getting a photo from one person's camera onto another person's home screen
 is the hard part of this app. Everything else — chat, drawing — is ordinary
 realtime sync.
 
-Home screen widgets can't poll. They're passive: the system decides when they
-redraw, and an app that's been swiped away gets no CPU time at all. So the
-photo can't be *pulled*. It has to be *pushed*, and the push has to be able to
-wake a process that isn't running.
+A widget cannot fetch anything for itself. It is passive: the system decides
+when it redraws, and an app that has been swiped away gets no CPU time at all.
+Something else has to wake up, get the photo, and hand it over.
 
-That means Firebase Cloud Messaging. There's no way around it.
+The clean answer is a push — a server tells the phone, the phone wakes, the
+widget updates in seconds. That needs Cloud Functions, which needs a paid plan.
+
+This project runs entirely on the free tier, so it does the other thing: the
+receiving device wakes on a schedule and goes looking. That works, and it
+costs nothing, and it means a photo can sit unseen for up to fifteen minutes.
+Most of the design below follows from that trade.
 
 ## The pipeline
 
+This project runs on Firebase's free Spark plan, which rules out two things
+the obvious design would use: **Cloud Storage** and **Cloud Functions**. Both
+need a card on file. What follows is shaped by working around exactly that.
+
 ```
-    Device A                  Firebase                    Device B
-   ----------                ----------                  ----------
+    Device A                  Firestore                   Device B
+   ----------                -----------                 ----------
    take photo
-   downscale
+   downscale to 720px
+   compress until
+   under 700KB
        |
-       +-- upload ---------> Storage
-       |
-       +-- write ----------> Firestore
-                             moments/{id}
-                                  |
-                                  | onCreate trigger
-                                  v
-                             Cloud Function
-                                  |
-                                  +-- high-priority ------> FcmService
-                                      data message              |
-                                                                | enqueue
-                                                                v
-                                                          WorkManager
-                                                                |
-                                                          download image
-                                                          write to disk
-                                                                |
-                                                                v
-                                                          Glance widget
-                                                          updates in place
+       +-- write ----------> moments/{id}
+             (JPEG inline         |
+              as a Blob)          |
+                                  |    app open:  live listener
+                                  +--> after boot: BootReceiver
+                                  |    otherwise:  periodic worker (15 min)
+                                       |
+                                       v
+                                 decode + write to disk
+                                       |
+                                       v
+                                 Glance widget updates
 ```
 
-## Why each piece
+## Why the photo lives in the database
 
-**Downscale before upload.** Widgets pass their bitmaps across a Binder
-transaction, which has a hard ~1 MB limit. Blow past it and the widget
-silently fails to draw. Photos get resized to roughly the widget's actual
-pixel size and compressed to JPEG before they ever leave the sender.
+Cloud Storage is the natural home for an image and it is not available here.
 
-**A data message, not a notification.** Notification messages get handled by
-the system tray when the app is backgrounded, and your code never runs. Only
-data messages reach `onMessageReceived` reliably enough to trigger work.
-They're sent at high priority so Doze doesn't sit on them.
+It turns out not to matter, because the photo was already tiny. Glance passes
+widget bitmaps to the launcher across a Binder transaction capped near 1MB, so
+these images are downscaled hard before they go anywhere — 720px on the long
+edge, compressed until under 700KB. A Firestore document holds up to 1MiB.
 
-**WorkManager, not a raw thread.** `onMessageReceived` gives you about 20
-seconds before the system can kill you, which is not enough to guarantee an
-image download on a bad connection. WorkManager survives that and retries.
+So the constraint that made the widget awkward is the same one that makes this
+work.
 
-**Write to internal storage, then update.** Glance state should point at a
-file on disk rather than carry a bitmap around. That keeps the Binder payload
-small and means the widget can redraw after a reboot without a network call.
+The compressor steps quality down and then dimensions until the result
+actually measures small enough, rather than encoding once at a fixed quality
+and hoping. A noisy photo — foliage, confetti, anything high-frequency —
+encodes several times larger than a smooth one at identical dimensions, and a
+document over 1MiB is rejected outright with an error that explains nothing.
+
+Old photos are pruned to the most recent 30 per pairing after every send. The
+free plan caps the entire database at 1GiB and nothing else reclaims it.
+
+## Why the receiver polls
+
+Pushing to another person's device needs credentials that cannot ship inside a
+client app, which means a trusted server, which means Cloud Functions, which
+means a paid plan. There is no free way around this.
+
+So delivery is inverted: instead of being told, the receiving device looks.
+
+| Situation | Latency |
+|---|---|
+| App open on the receiving phone | Round trip — a Firestore listener |
+| Just rebooted | Immediate, via `BootReceiver` |
+| App closed | **Up to 15 minutes** |
+
+Fifteen minutes is WorkManager's floor for periodic work, not a number chosen
+here; anything smaller is silently rounded up to it. That worst case is the
+honest price of the free plan.
+
+The Cloud Functions in `functions/` are complete and unused. `FirebaseMessagingService`
+is still registered, and a push arriving there simply triggers the same sync
+the worker runs. Deploying the functions later converts polling into instant
+delivery without a single client change.
 
 ## Known constraints
 
-- **Doze mode can still delay delivery.** High-priority data messages are
-  exempt in most cases, but a device in deep Doze with aggressive OEM battery
-  management (Xiaomi, Oppo, Samsung) may hold the push. There's no universal
-  fix; the mitigation is asking the user to exempt the app from battery
-  optimization.
-- **Cloud Functions requires the Blaze plan.** Sending a push to another user
-  needs a trusted server, because the FCM server credential cannot be shipped
-  inside a client app. Blaze has a free monthly grant that this app's traffic
-  won't exceed, but it needs a card on file.
+- **Up to 15 minutes for a photo to land on a closed phone.** Inherent to
+  polling; see above.
+- **Aggressive OEM battery management makes that worse.** Xiaomi, Oppo,
+  Samsung and OnePlus will defer or drop background work entirely. The
+  mitigation is exempting the app from battery optimisation.
+- **1GiB total database size**, which is also where every photo lives.
+  Pruning keeps 30 per pairing, so roughly 6MB of photos per couple.
+- **20,000 Firestore writes and 50,000 reads per day.** Not close to
+  reachable with two people.
 
 ## Module layout
 

@@ -20,6 +20,10 @@ class PairingRepository @Inject constructor(
 
     fun observe(pairingId: String): Flow<Pairing?> = pairings.document(pairingId).asFlow()
 
+    /** One-shot read, for the background sync where there is no lifecycle. */
+    suspend fun get(pairingId: String): Pairing? =
+        pairings.document(pairingId).get().await().toObject(Pairing::class.java)
+
     /** Opens a pairing with one member and a code for the other person to enter. */
     suspend fun createInvite(uid: String): Result<Pairing> = runCatching {
         val code = generateInviteCode()

@@ -65,7 +65,13 @@ class SendMomentViewModel @Inject constructor(
                 jpeg = compressed,
                 caption = caption.trim(),
             )
-                .onSuccess { _state.update { it.copy(sending = false, sent = true) } }
+                .onSuccess {
+                    _state.update { it.copy(sending = false, sent = true) }
+                    // Photos live inside Firestore documents now, and the free
+                    // plan caps the whole database at 1GiB. Without this the
+                    // collection grows until writes start failing.
+                    momentRepository.pruneOlderThan(pairingId)
+                }
                 .onFailure { error ->
                     _state.update {
                         it.copy(sending = false, error = error.message ?: "Couldn't send that")

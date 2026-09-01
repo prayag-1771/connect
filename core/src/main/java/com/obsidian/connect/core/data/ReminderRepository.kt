@@ -5,6 +5,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.obsidian.connect.core.FirestorePaths
+import com.obsidian.connect.core.model.Nudge
 import com.obsidian.connect.core.model.Reminder
 import com.obsidian.connect.core.model.ReminderScope
 import kotlinx.coroutines.flow.Flow
@@ -129,6 +130,26 @@ class ReminderRepository @Inject constructor(
 
         finished.size()
     }
+
+    /**
+     * Nudges aimed at [uid] that arrived after [since].
+     *
+     * With no server to push them, the receiving device is the one that has to
+     * notice. Bounded by a timestamp so a nudge is announced once and not
+     * again on the next sync.
+     */
+    suspend fun nudgesSince(pairingId: String, uid: String, since: Date): List<Nudge> =
+        firestore
+            .collection(FirestorePaths.PAIRINGS)
+            .document(pairingId)
+            .collection(FirestorePaths.NUDGES)
+            .whereEqualTo("toUid", uid)
+            .whereGreaterThan("createdAt", since)
+            .orderBy("createdAt", Query.Direction.ASCENDING)
+            .limit(10)
+            .get()
+            .await()
+            .toObjects(Nudge::class.java)
 
     /**
      * Pokes the other person about a shared reminder.

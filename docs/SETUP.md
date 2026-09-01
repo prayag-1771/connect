@@ -3,7 +3,8 @@
 Everything needed to go from a fresh clone to a photo landing on someone
 else's home screen.
 
-Budget about 30 minutes. Most of it is waiting on Firebase.
+Budget about 20 minutes. No payment details needed at any point —
+this runs entirely on Firebase's free tier.
 
 ## Before you start: you need two phones
 
@@ -11,10 +12,13 @@ This is not a nice-to-have. The whole app is one person sending to another
 person, and the widget only ever shows what your *partner* sent. One device
 gets you as far as an invite code with nobody to give it to.
 
-Two Android phones is the good setup. One phone plus an emulator works, but
-the emulator image must be a **Google Play** or **Google APIs** one — plain
-AOSP images have no Google Play services, and without those, push messages
-never arrive and the widget never updates.
+Two Android phones is the good setup. One phone plus an emulator works — use a
+**Google Play** or **Google APIs** system image, since Firebase's client
+libraries expect Google Play services to be present.
+
+Be aware an emulator is a poor model of the thing most likely to go wrong:
+real phones aggressively defer background work to save battery, and emulators
+do not.
 
 ---
 
@@ -40,76 +44,62 @@ In a browser, at [console.firebase.google.com](https://console.firebase.google.c
 5. Skip the SDK setup steps the console shows you — the Gradle wiring is
    already in the repo.
 
-## 2. Turn on the four services
+## 2. Turn on the two services
 
-Still in the console, in the left sidebar:
+Still in the console. This project runs entirely on the **free Spark plan**, so
+there are only two things to enable — and you should deliberately *not* touch
+Storage.
 
-| Service | What to do |
-|---|---|
-| **Authentication** | Sign-in method → enable **Email/Password** |
-| **Firestore Database** | Create database → **Production mode** → pick a region |
-| **Storage** | Get started → **Production mode** → same region |
-| **Cloud Messaging** | Already on. Nothing to do. |
+| Service | Where | What to do |
+|---|---|---|
+| **Authentication** | Security → Authentication | Get started → Sign-in method → **Email/Password** → enable the first toggle → Save |
+| **Firestore** | Databases and storage → Firestore | Create database → **Production mode** → pick a region → Enable |
 
-Production mode locks everything down by default. That is correct — the real
-rules get deployed in step 4 and they are stricter than the test-mode ones.
+If a menu item is hard to find, use **Search for products** at the top left.
 
-Pick the region carefully. **It cannot be changed later**, and Firestore and
-Storage should be in the same one. Choose whichever is closest to you.
+Pick the region carefully. **It cannot be changed later.** Choose whichever is
+closest to you.
 
-## 3. Upgrade to the Blaze plan
+### Skip Storage. Skip Blaze.
 
-Cloud Functions need it. Console → the **Spark/Blaze** indicator at the bottom
-of the sidebar → **Upgrade to Blaze**. It needs a card.
+Cloud Storage now requires the paid Blaze plan, and so do Cloud Functions.
+Neither is used. Photos travel inside Firestore documents instead, and the
+receiving phone polls rather than being pushed to — see
+[ARCHITECTURE.md](ARCHITECTURE.md) for why that works and what it costs.
 
-Blaze includes a free monthly allowance that a two-person app will not come
-close to exhausting, so realistically this stays at zero. But the card is
-required and there is no way around it.
+If you open the Storage page it will offer to upgrade your project. Don't.
 
-**What breaks without it:** everything on-device still works — signing in,
-pairing, both reminder lists, taking photos, uploading them. What stops is
-delivery. Nothing reaches the other phone, because the push has to be sent by
-a trusted server and Functions is that server. Photos upload and then sit
-there. Nudges go nowhere.
+**What you give up by staying free:** a photo can take up to 15 minutes to
+appear on a closed phone. With the app open it is near-instant, and after a
+reboot it syncs immediately. That 15-minute worst case is WorkManager's floor
+for background work and there is no way around it without a server.
 
-If you would rather not put a card down, the alternative is running the same
-two functions on any free Node host and pointing them at the project with a
-service account key. That is a real option, just more moving parts.
-
-## 4. Deploy the backend
+## 3. Deploy the rules and indexes
 
 ```bash
 npm install -g firebase-tools
 firebase login                    # opens a browser
-firebase use --add                # pick the project you just made
+firebase use --add                # pick your project
 ```
 
-Then deploy the rules and indexes:
+Then:
 
 ```bash
-firebase deploy --only firestore:rules,firestore:indexes,storage
+firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-And the functions:
+**Only that command.** A bare `firebase deploy` will try to deploy Cloud
+Functions and fail, because those need Blaze.
 
-```bash
-cd functions && npm ci && cd ..
-firebase deploy --only functions
-```
+### The indexes matter
 
-The first functions deploy takes a few minutes and will ask to enable some
-Google Cloud APIs. Say yes.
+Three composite indexes go up with that command, and the queries behind them
+fail at *runtime* without them — not at build time. The important one is
+`moments` over `pairingId`, `senderId`, `createdAt`, which is how the widget
+finds the newest photo from your partner specifically. They take a minute or
+two to finish building after deploying.
 
-Two functions should appear: `onMomentCreated` and `onNudgeCreated`.
-
-### The index matters
-
-`firestore:indexes` deploys a composite index on `moments` over `pairingId`
-plus `createdAt`. Without it the photo history query fails at runtime with a
-"query requires an index" error rather than at build time. It takes a minute
-or two to build after deploying.
-
-## 5. Build the APK
+## 4. Build the APK
 
 You must rebuild after dropping in the real `google-services.json` — the
 config is compiled into the APK, so a build made against the placeholder will
@@ -124,7 +114,7 @@ Output lands at `app/build/outputs/apk/debug/app-debug.apk`.
 If Gradle cannot find the SDK, check `local.properties` has a correct
 `sdk.dir`. That file is machine-specific and gitignored.
 
-## 6. Get it onto the phones
+## 5. Get it onto the phones
 
 On each phone: **Settings → About phone → tap "Build number" seven times**,
 then **Settings → Developer options → USB debugging** on.
@@ -138,7 +128,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 Repeat for the second phone. Same APK on both.
 
-## 7. Actually use it
+## 6. Actually use it
 
 **On phone A**
 
@@ -165,43 +155,58 @@ joins.
 
 8. **Send** tab → shutter → review the shot → optionally add a caption →
    tap send.
-9. Within a few seconds the widget on phone B shows the photo.
+9. **With the Connect app open on phone B**, the widget updates within a
+   second or two. Do this first — it confirms the whole path works.
+10. Now close the app on phone B entirely and send another. This time it can
+    take up to 15 minutes. That is the free-plan behaviour, not a bug.
 
 **Try the reminders**
 
-10. **Reminders** tab → **Together** → add something. It appears on the other
-    phone.
-11. Tap the bell on an item to nudge — a notification lands on the other
-    phone.
-12. **Just mine** is private. Add something there and confirm it does *not*
+11. **Reminders** tab → **Together** → add something. It appears on the other
+    phone immediately — reminder lists use live listeners, so they are not
+    affected by the polling delay at all.
+12. Tap the bell on an item to nudge. The notification arrives on the other
+    phone on the sync schedule: immediately if their app is open, otherwise
+    within 15 minutes.
+13. **Just mine** is private. Add something there and confirm it does *not*
     show up on the other phone.
 
 ## When something does not work
 
-**The widget never changes.** Almost always the push. Check in order:
+**The widget is not updating.** First, open the app on the receiving phone —
+if it updates within a second or two, sync is working and you are just seeing
+the polling delay.
 
-1. Is `onMomentCreated` deployed? Console → Functions.
-2. Its logs — `firebase functions:log`. "No FCM token for recipient" means the
-   receiving phone never registered; reopen the app on it while signed in.
-3. Battery optimisation. Samsung, Xiaomi, Oppo and OnePlus are aggressive
-   about killing background apps, and a killed app does not receive data
-   pushes. Settings → Apps → Connect → Battery → **Unrestricted**.
+If it still does not update:
+
+1. **Battery optimisation.** This is the usual cause. Samsung, Xiaomi, Oppo
+   and OnePlus defer or silently drop background work. Settings → Apps →
+   Connect → Battery → **Unrestricted**.
+2. Confirm both phones are signed in as *different* accounts and paired.
+3. Check the indexes finished building — Console → Firestore → Indexes.
+
+**Photos take up to 15 minutes.** Working as designed on the free plan. See
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 **"No matching client found for package name"** — the Android app registered
 in Firebase has a different package name than `com.obsidian.connect`. Register
 another Android app in the same project with the right name and download a
 fresh `google-services.json`.
 
-**"PERMISSION_DENIED" in the app** — rules did not deploy. Re-run step 4.
+**"PERMISSION_DENIED" in the app** — rules did not deploy. Re-run step 3.
 
 **"The query requires an index"** — the composite index has not finished
 building, or `firestore:indexes` was not deployed. The error message in
 logcat contains a direct link that creates it.
 
-**Nudges never arrive but photos do** — notification permission. Android 13
-and up needs it granted; the app asks on first launch, and if it was denied
-the notification is dropped silently. Settings → Apps → Connect →
-Notifications.
+**Nudges never arrive** — notification permission. Android 13 and up needs it
+granted; the app asks on first launch, and if it was denied the notification
+is dropped silently. Settings → Apps → Connect → Notifications. Note nudges
+arrive on the same polling schedule as photos.
+
+**"Photo is too large"** — should not happen; the compressor steps quality and
+then dimensions down until it fits under 700KB. If you see it, the photo
+somehow resisted every reduction, and it is worth reporting.
 
 ## Reading device logs
 

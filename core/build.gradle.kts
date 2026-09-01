@@ -30,7 +30,8 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     api(libs.firebase.auth)
     api(libs.firebase.firestore)
-    api(libs.firebase.storage)
+    // Cloud Storage is deliberately absent: it needs a paid plan, so photos
+    // travel inside Firestore documents instead. See MomentRepository.
     implementation(libs.kotlinx.coroutines.play.services)
 
     implementation(libs.hilt.android)

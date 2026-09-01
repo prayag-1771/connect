@@ -17,15 +17,36 @@ import java.io.InputStream
  */
 object ImageCompressor {
 
-    /** Long edge of the stored image. Comfortably above any widget's needs. */
-    const val TARGET_LONG_EDGE = 1080
+    /**
+     * Long edge of the stored image.
+     *
+     * 720 rather than something larger because the photo now travels inside a
+     * Firestore document, and a widget never renders more than this anyway —
+     * Glance caps its bitmaps well below it.
+     */
+    const val TARGET_LONG_EDGE = 720
 
     private const val QUALITY = 82
 
+    /** Matches the repository's ceiling, which Firestore's 1MiB doc limit sets. */
+    private const val MAX_BYTES = 700 * 1024
+
+    private const val MIN_QUALITY = 45
+
+    /**
+     * Compresses until the result actually fits.
+     *
+     * A single fixed quality is not enough: a noisy photo — foliage, confetti,
+     * anything high-frequency — can encode several times larger than a smooth
+     * one at identical dimensions. Guessing once and hoping means a document
+     * Firestore rejects, so this steps quality down until it measures small
+     * enough, then gives up on dimensions if that is not enough either.
+     */
     fun compress(
         source: ByteArray,
         longEdge: Int = TARGET_LONG_EDGE,
         quality: Int = QUALITY,
+        maxBytes: Int = MAX_BYTES,
     ): ByteArray {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(source, 0, source.size, bounds)
@@ -39,11 +60,45 @@ object ImageCompressor {
         val scaled = scaleToFit(decoded, longEdge)
         val oriented = applyOrientation(scaled, readOrientation(source))
 
-        return ByteArrayOutputStream().use { out ->
-            oriented.compress(Bitmap.CompressFormat.JPEG, quality, out)
-            out.toByteArray()
+        return encodeToFit(oriented, quality, maxBytes)
+    }
+
+    private fun encodeToFit(bitmap: Bitmap, startQuality: Int, maxBytes: Int): ByteArray {
+        var current = bitmap
+        var quality = startQuality
+
+        while (true) {
+            val encoded = encode(current, quality)
+            if (encoded.size <= maxBytes) return encoded
+
+            if (quality > MIN_QUALITY) {
+                quality -= 10
+                continue
+            }
+
+            // Quality alone was not enough. Halving the pixel count cuts size
+            // far more sharply than any further quality drop would, and looks
+            // better than the smeared result of very low quality.
+            val smaller = Bitmap.createScaledBitmap(
+                current,
+                (current.width * 0.75f).toInt().coerceAtLeast(1),
+                (current.height * 0.75f).toInt().coerceAtLeast(1),
+                true,
+            )
+
+            // Nothing left to give; hand back the smallest we managed.
+            if (smaller.width < 2 || smaller.height < 2) return encoded
+
+            current = smaller
+            quality = startQuality
         }
     }
+
+    private fun encode(bitmap: Bitmap, quality: Int): ByteArray =
+        ByteArrayOutputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+            out.toByteArray()
+        }
 
     private fun scaleToFit(bitmap: Bitmap, longEdge: Int): Bitmap {
         val largest = maxOf(bitmap.width, bitmap.height)

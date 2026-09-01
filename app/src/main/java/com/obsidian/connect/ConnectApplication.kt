@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.obsidian.connect.messaging.Notifications
+import com.obsidian.connect.sync.SyncScheduler
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -22,6 +23,11 @@ class ConnectApplication : Application(), Configuration.Provider {
         // Has to exist before the first nudge lands. A notification naming a
         // channel that was never created is dropped without a trace.
         Notifications.ensureChannels(this)
+
+        // With no server to push to us, this schedule is the only thing that
+        // updates a widget while the app is closed.
+        SyncScheduler.schedulePeriodic(this)
+        SyncScheduler.now(this)
     }
 
     override val workManagerConfiguration: Configuration

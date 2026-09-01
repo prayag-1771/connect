@@ -43,10 +43,15 @@ Full instructions are in [docs/SETUP.md](docs/SETUP.md). The short version:
 
 1. Create a Firebase project, register an Android app as
    `com.obsidian.connect`, and drop its `google-services.json` into `app/`.
-2. Enable Authentication (email/password), Firestore, Storage and Cloud
-   Messaging.
-3. `firebase deploy` the rules, indexes and functions.
+2. Enable Authentication (email/password) and Firestore. **Nothing else** —
+   no Storage, no Blaze, no card.
+3. `firebase deploy --only firestore:rules,firestore:indexes`
 4. `./gradlew assembleDebug` and install on **two** phones.
+
+Runs entirely on Firebase's free Spark plan. The trade is latency: a photo
+reaches a phone with the app closed within 15 minutes rather than instantly.
+With the app open it is near-instant. [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+explains why.
 
 Two devices is a hard requirement, not a suggestion — the widget only ever
 shows what the other person sent, so a single device gets you as far as an

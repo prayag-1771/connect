@@ -1,40 +1,55 @@
 package com.obsidian.connect.core.data
 
+import com.google.firebase.firestore.Blob
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
-import com.google.firebase.storage.FirebaseStorage
-import com.google.firebase.storage.storageMetadata
 import com.obsidian.connect.core.FirestorePaths
 import com.obsidian.connect.core.model.Moment
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class MomentRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
-    private val storage: FirebaseStorage,
 ) {
     private val moments get() = firestore.collection(FirestorePaths.MOMENTS)
 
-    fun observeHistory(pairingId: String, limit: Long = 30): Flow<List<Moment>> =
+    /**
+     * The newest photo the other person sent — the one the widget shows.
+     *
+     * Filtered by sender in the query rather than in memory. Every document
+     * here carries its image inline, so pulling a handful and discarding your
+     * own would mean transferring hundreds of kilobytes to throw most away.
+     */
+    fun observeLatestFrom(pairingId: String, partnerId: String): Flow<Moment?> =
+        latestQuery(pairingId, partnerId).asFlow<Moment>().map { it.firstOrNull() }
+
+    /** One-shot equivalent, for the background sync. */
+    suspend fun latestFrom(pairingId: String, partnerId: String): Moment? =
+        latestQuery(pairingId, partnerId)
+            .get()
+            .await()
+            .toObjects(Moment::class.java)
+            .firstOrNull()
+
+    private fun latestQuery(pairingId: String, partnerId: String): Query =
         moments
             .whereEqualTo("pairingId", pairingId)
+            .whereEqualTo("senderId", partnerId)
             .orderBy("createdAt", Query.Direction.DESCENDING)
-            .limit(limit)
-            .asFlow()
+            .limit(1)
 
     /**
-     * Uploads the photo, then writes the document.
+     * Sends a photo.
      *
-     * Order matters. The Firestore write is what a Cloud Function watches to
-     * fire the push, so if it landed first the receiving device could start
-     * downloading a file that isn't in Storage yet.
-     *
-     * [jpeg] is expected to be already downscaled and compressed by the caller.
+     * [jpeg] must already be downscaled and compressed by the caller. The size
+     * check is not defensive padding — a document over 1MiB is rejected by
+     * Firestore outright, and the resulting error says nothing useful about
+     * why, so it is worth catching here where the cause is obvious.
      */
     suspend fun send(
         pairingId: String,
@@ -42,19 +57,16 @@ class MomentRepository @Inject constructor(
         jpeg: ByteArray,
         caption: String = "",
     ): Result<Moment> = runCatching {
-        val path = "moments/$pairingId/${UUID.randomUUID()}.jpg"
-        val fileRef = storage.reference.child(path)
-
-        fileRef.putBytes(jpeg, storageMetadata { contentType = "image/jpeg" }).await()
-        val downloadUrl = fileRef.downloadUrl.await().toString()
+        check(jpeg.size <= MAX_IMAGE_BYTES) {
+            "That photo is ${jpeg.size / 1024}KB, over the ${MAX_IMAGE_BYTES / 1024}KB limit"
+        }
 
         val doc = moments.document()
         doc.set(
             mapOf(
                 "pairingId" to pairingId,
                 "senderId" to senderId,
-                "storagePath" to path,
-                "downloadUrl" to downloadUrl,
+                "image" to Blob.fromBytes(jpeg),
                 "caption" to caption,
                 "createdAt" to FieldValue.serverTimestamp(),
             ),
@@ -64,17 +76,45 @@ class MomentRepository @Inject constructor(
             id = doc.id,
             pairingId = pairingId,
             senderId = senderId,
-            storagePath = path,
-            downloadUrl = downloadUrl,
+            image = Blob.fromBytes(jpeg),
             caption = caption,
         )
     }
 
-    /** Removes both the document and the file behind it. */
     suspend fun delete(moment: Moment): Result<Unit> = runCatching {
         moments.document(moment.id).delete().await()
-        if (moment.storagePath.isNotEmpty()) {
-            storage.reference.child(moment.storagePath).delete().await()
+    }
+
+    /**
+     * Deletes everything but the most recent [keep] photos for a pairing.
+     *
+     * Storage is finite on the free plan — 1GiB across the whole database — and
+     * every photo lives in it permanently otherwise. Called after each send so
+     * the collection cannot grow without bound.
+     */
+    suspend fun pruneOlderThan(pairingId: String, keep: Int = KEEP_PER_PAIRING): Result<Int> =
+        runCatching {
+            val all = moments
+                .whereEqualTo("pairingId", pairingId)
+                .orderBy("createdAt", Query.Direction.DESCENDING)
+                .get()
+                .await()
+                .documents
+
+            val stale = all.drop(keep)
+            if (stale.isEmpty()) return@runCatching 0
+
+            firestore.runBatch { batch -> stale.forEach { batch.delete(it.reference) } }.await()
+            stale.size
         }
+
+    private companion object {
+        /**
+         * Firestore's document ceiling is 1MiB and the rest of the fields need
+         * room too, so this leaves generous headroom below it.
+         */
+        const val MAX_IMAGE_BYTES = 700 * 1024
+
+        const val KEEP_PER_PAIRING = 30
     }
 }
