@@ -16,7 +16,6 @@ next to everything else they look at all day.
 | Photo to partner's home screen widget | Built, untested on a device |
 | Text messaging | Planned |
 | Shared live drawing canvas | Planned |
-| Wear OS watch face | Planned |
 
 ### The two reminder lists
 

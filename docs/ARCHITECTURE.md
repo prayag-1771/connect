@@ -79,13 +79,16 @@ small and means the widget can redraw after a reboot without a network call.
 ## Module layout
 
 ```
-core/     models, Firebase repositories, no Android UI
-app/      phone app — auth, pairing, camera, chat, drawing, widget
-wear/     Wear OS module (phase 2)
+core/       models, Firebase repositories, no Android UI
+app/        phone app — auth, pairing, camera, chat, drawing, widget
 functions/  Cloud Functions (TypeScript)
 ```
 
-`core` stays free of UI so both `app` and `wear` can depend on it.
+There is no watch module and none is planned — the widget targets the phone
+home screen only.
+
+`core` stays free of Android UI anyway. That keeps the Firebase layer testable
+on the JVM without an emulator, which is the part most worth testing.
 
 ## Data model
 

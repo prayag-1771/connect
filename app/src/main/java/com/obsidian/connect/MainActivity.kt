@@ -19,7 +19,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.obsidian.connect.auth.AuthScreen
 import com.obsidian.connect.pairing.PairingScreen
-import com.obsidian.connect.reminders.RemindersScreen
 import com.obsidian.connect.ui.theme.ConnectTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -58,7 +57,7 @@ private fun ConnectApp(viewModel: RootViewModel = hiltViewModel()) {
 
         Stage.Unpaired -> PairingScreen(onPaired = {})
 
-        Stage.Ready -> RemindersScreen()
+        Stage.Ready -> HomeScreen()
     }
 }
 
