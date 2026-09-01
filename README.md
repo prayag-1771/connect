@@ -10,11 +10,24 @@ next to everything else they look at all day.
 
 | Feature | Status |
 |---|---|
-| Photo to partner's home screen widget | In progress |
-| Pairing two accounts with an invite code | Planned |
+| Pairing two accounts with an invite code | Built |
+| Shared reminder list, with nudges | Built |
+| Private reminder list | Built |
+| Photo to partner's home screen widget | Built, untested on a device |
 | Text messaging | Planned |
 | Shared live drawing canvas | Planned |
 | Wear OS watch face | Planned |
+
+### The two reminder lists
+
+**Together** is shared. Both people see it, either can add, tick off or edit
+anything on it, and either can nudge the other about an item — which arrives
+as a notification on their phone.
+
+**Just mine** is private. It lives under your own user document rather than
+under the pairing, so it is unreachable by your partner. That is enforced by
+security rules on the path, not by a flag on the document; a flag would be
+something anyone who could write the document could flip.
 
 ## Stack
 

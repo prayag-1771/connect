@@ -106,7 +106,36 @@ pairs/{pairId}/messages/{messageId}
 
 pairs/{pairId}/strokes/{strokeId}
   senderId, points, color, width, createdAt
+
+pairs/{pairId}/reminders/{reminderId}     <- the shared list
+  title, note, dueAt, done, createdBy, completedBy, completedAt, createdAt
+
+pairs/{pairId}/nudges/{nudgeId}
+  reminderId, reminderTitle, fromUid, toUid, createdAt
+
+users/{uid}/reminders/{reminderId}        <- the private list
+  title, note, dueAt, done, createdBy, createdAt
 ```
+
+## Why the private list lives somewhere else
+
+Both reminder lists hold identical documents. They could have been one
+collection with a `private: true` field, and that would have been simpler.
+
+It would also not have worked. Security rules can restrict a *path*, but they
+cannot stop someone from changing a field on a document they are already
+allowed to write. Anyone with write access to the shared list could flip that
+flag and pull a private item into view — or flip it the other way and hide
+something from their partner.
+
+Putting the private list under `users/{uid}` makes the guarantee structural.
+There is no field to flip, because reachability is decided by where the
+document sits.
+
+One thing that makes this work: **Firestore subcollection rules do not inherit
+from the parent document.** `users/{uid}` is readable by any signed-in user so
+partners can show each other's names, but `users/{uid}/reminders` underneath it
+is owner-only, and the permissive rule above does not reach in.
 
 Strokes live in their own subcollection so the drawing canvas can attach a
 realtime listener scoped tightly to one pair, without pulling message history
