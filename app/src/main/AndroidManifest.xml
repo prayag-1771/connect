@@ -41,6 +41,14 @@
                 android:resource="@xml/moment_widget_info" />
         </receiver>
 
+
+        <service
+            android:name=".messaging.ConnectMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
         <!--
           WorkManager's own initializer is removed so ConnectApplication can
           supply a Configuration carrying the Hilt worker factory. Leaving both
