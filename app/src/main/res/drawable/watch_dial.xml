@@ -3,6 +3,11 @@
   Deliberately almost invisible. The photo is the dial; this only adds enough
   edge and centre definition for the hands to read as a clock rather than as
   two stray marks on someone's face.
+
+  The ring radius of 92 (of a 100 unit half-width) is duplicated as
+  DIAL_RATIO in WatchFaceRenderer, which cuts the photo to end at exactly
+  this line. Change one and the other must change with it, or the photo
+  will sit inside or spill over the rim.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="200dp"
