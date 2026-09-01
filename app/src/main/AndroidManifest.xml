@@ -32,6 +32,16 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".chat.QuickReplyActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Connect.QuickReply"
+            android:windowSoftInputMode="adjustResize|stateVisible" />
+
         <receiver
             android:name=".widget.MomentWidgetReceiver"
             android:exported="false">

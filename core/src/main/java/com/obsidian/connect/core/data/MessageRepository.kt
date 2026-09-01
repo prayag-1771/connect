@@ -47,6 +47,22 @@ class MessageRepository @Inject constructor(
         }
 
     /**
+     * The newest message the other person sent.
+     *
+     * Fetches a handful and filters here rather than querying by sender.
+     * Firestore requires an inequality filter to lead the ordering, which would
+     * conflict with ordering by time — and the last few messages are cheap.
+     */
+    suspend fun latestFrom(pairingId: String, uid: String): Message? =
+        messages(pairingId)
+            .orderBy("createdAtMillis", Query.Direction.DESCENDING)
+            .limit(RECENT_LOOKBACK)
+            .get()
+            .await()
+            .toObjects(Message::class.java)
+            .firstOrNull { it.senderId != uid }
+
+    /**
      * Messages from the other person that arrived after [sinceMillis].
      *
      * Used to decide whether the widget shows its unread dot. Counting on the
@@ -70,5 +86,8 @@ class MessageRepository @Inject constructor(
 
         /** Past this the dot is on either way; no point counting further. */
         const val UNREAD_CAP = 50L
+
+        /** Enough to find the other person's last message in any real exchange. */
+        const val RECENT_LOOKBACK = 15L
     }
 }

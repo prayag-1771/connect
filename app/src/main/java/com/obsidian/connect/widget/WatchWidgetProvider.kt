@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
 import com.obsidian.connect.MainActivity
+import com.obsidian.connect.chat.QuickReplyActivity
 import com.obsidian.connect.R
 
 /**
@@ -105,6 +106,18 @@ class WatchWidgetProvider : AppWidgetProvider() {
                 R.id.watch_root,
                 if (active) openApp(context) else openClock(context),
             )
+
+            // The dot is painted into the bitmap, so it needs a separate
+            // invisible view over it to be tappable at all.
+            val unread = active && WidgetCaptionStore.hasUnread(context)
+            views.setViewVisibility(
+                R.id.watch_unread_touch,
+                if (unread) View.VISIBLE else View.GONE,
+            )
+            if (unread) {
+                views.setOnClickPendingIntent(R.id.watch_unread_touch, openQuickReply(context))
+            }
+
             return views
         }
 
@@ -127,6 +140,18 @@ class WatchWidgetProvider : AppWidgetProvider() {
             // The face is a circle, so the limiting dimension is the smaller one.
             val dp = listOf(widthDp, heightDp).filter { it > 0 }.minOrNull() ?: DEFAULT_FACE_DP
             return (dp * context.resources.displayMetrics.density).toInt()
+        }
+
+        /** Opens the reply strip over the home screen. */
+        private fun openQuickReply(context: Context): PendingIntent {
+            val intent = Intent(context, QuickReplyActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            return PendingIntent.getActivity(
+                context,
+                REPLY_REQUEST,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
         }
 
         /**
@@ -169,5 +194,6 @@ class WatchWidgetProvider : AppWidgetProvider() {
         // Distinct request codes, or the two intents would overwrite each other.
         private const val APP_REQUEST = 0
         private const val CLOCK_REQUEST = 1
+        private const val REPLY_REQUEST = 2
     }
 }

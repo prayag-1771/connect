@@ -9,4 +9,19 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
+
+    <!--
+      The quick reply strip. Translucent and dimmed so the home screen stays
+      visible behind it, which is what makes it read as a peek rather than as
+      having opened the app.
+    -->
+    <style name="Theme.Connect.QuickReply" parent="@android:style/Theme.Material.Dialog.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:backgroundDimAmount">0.35</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 </resources>

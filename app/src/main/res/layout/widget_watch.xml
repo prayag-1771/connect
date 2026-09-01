@@ -40,6 +40,21 @@
         android:hand_hour="@drawable/watch_hand_hour"
         android:hand_minute="@drawable/watch_hand_minute" />
 
+    <!--
+      Tap target for the unread dot, which is painted into the photo bitmap and
+      so cannot be clicked on its own. Sits over the top-right quadrant where
+      the dot lands. An ImageView because plain View is not on the RemoteViews
+      whitelist.
+    -->
+    <ImageView
+        android:id="@+id/watch_unread_touch"
+        android:layout_width="76dp"
+        android:layout_height="76dp"
+        android:layout_gravity="top|end"
+        android:background="@android:color/transparent"
+        android:contentDescription="@string/watch_widget_unread"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/watch_caption"
         android:layout_width="wrap_content"
