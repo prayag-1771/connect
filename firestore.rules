@@ -25,6 +25,15 @@ service cloud.firestore {
       // which is useless without the server credential needed to send to it.
       allow read: if signedIn();
       allow write: if signedIn() && uid() == userId;
+
+      // The private reminder list.
+      //
+      // Subcollection rules do not inherit from the parent document, so the
+      // permissive read above does not reach in here — this stays owner-only
+      // even though the user document itself is readable by a partner.
+      match /reminders/{reminderId} {
+        allow read, write: if signedIn() && uid() == userId;
+      }
     }
 
     match /pairings/{pairingId} {
@@ -50,6 +59,25 @@ service cloud.firestore {
         allow read: if isMember(pairingId);
         allow create: if isMember(pairingId)
           && request.resource.data.senderId == uid();
+        allow update, delete: if false;
+      }
+
+      // The shared reminder list. Either person may tick off, edit or remove
+      // anything here — that mutual authority is the point of the list.
+      match /reminders/{reminderId} {
+        allow read: if isMember(pairingId);
+        allow create: if isMember(pairingId)
+          && request.resource.data.createdBy == uid();
+        allow update, delete: if isMember(pairingId);
+      }
+
+      // Nudges are write-once. A Cloud Function watches for creations and
+      // turns each one into a push on the other person's phone.
+      match /nudges/{nudgeId} {
+        allow read: if isMember(pairingId);
+        allow create: if isMember(pairingId)
+          && request.resource.data.fromUid == uid()
+          && request.resource.data.toUid != uid();
         allow update, delete: if false;
       }
 

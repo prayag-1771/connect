@@ -3,6 +3,7 @@ package com.obsidian.connect
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import com.obsidian.connect.messaging.Notifications
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -15,6 +16,13 @@ import javax.inject.Inject
 class ConnectApplication : Application(), Configuration.Provider {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
+
+    override fun onCreate() {
+        super.onCreate()
+        // Has to exist before the first nudge lands. A notification naming a
+        // channel that was never created is dropped without a trace.
+        Notifications.ensureChannels(this)
+    }
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()

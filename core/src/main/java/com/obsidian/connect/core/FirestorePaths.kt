@@ -9,4 +9,11 @@ object FirestorePaths {
     // Subcollections of a pairing document.
     const val MESSAGES = "messages"
     const val STROKES = "strokes"
+
+    /**
+     * Reminders live under a pairing when shared and under a user when
+     * private, so the same name is used against two different parents.
+     */
+    const val REMINDERS = "reminders"
+    const val NUDGES = "nudges"
 }

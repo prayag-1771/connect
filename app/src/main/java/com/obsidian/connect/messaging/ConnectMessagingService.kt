@@ -53,6 +53,19 @@ class ConnectMessagingService : FirebaseMessagingService() {
                     senderName = message.data[KEY_SENDER_NAME].orEmpty(),
                 )
             }
+
+            TYPE_NUDGE -> {
+                // Only reached with the app in the foreground. Backgrounded,
+                // the system tray renders the notification payload itself and
+                // this callback is never invoked.
+                val notification = message.notification
+                Notifications.showNudge(
+                    context = applicationContext,
+                    title = notification?.title ?: "Nudge",
+                    body = notification?.body.orEmpty(),
+                    tag = message.data[KEY_REMINDER_ID].orEmpty().ifEmpty { "nudge" },
+                )
+            }
         }
     }
 
@@ -62,6 +75,9 @@ class ConnectMessagingService : FirebaseMessagingService() {
         const val KEY_CAPTION = "caption"
         const val KEY_SENDER_NAME = "senderName"
 
+        const val KEY_REMINDER_ID = "reminderId"
+
         const val TYPE_MOMENT = "moment"
+        const val TYPE_NUDGE = "nudge"
     }
 }
