@@ -8,6 +8,8 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * Cuts a photo into the round face of the watch.
@@ -42,13 +44,27 @@ object WatchFaceRenderer {
      */
     private const val DIAL_RATIO = 0.92f
 
+    /** Unread dot, as a fraction of the face's full width. */
+    private const val DOT_RATIO = 0.055f
+    private const val DOT_OUTLINE_RATIO = 0.014f
+
+    private val DOT_GREEN = 0xFF3DDC84u.toInt()
+    private val DOT_OUTLINE = 0xCC0B0B0Fu.toInt()
+
+    /** Stand-in disc for before any photo has arrived. */
+    private val EMPTY_FACE = 0xFF1F1F25u.toInt()
+
     fun sizeFor(requestedPx: Int): Int = requestedPx.coerceIn(160, MAX_FACE_PX)
 
     /**
      * Returns a square bitmap holding [source] centre-cropped into the face,
      * with everything outside it transparent.
+     *
+     * [source] may be null — before the first photo arrives the face is drawn
+     * as a plain dark disc rather than left empty, so the hands have something
+     * to sit on and the unread dot still has a rim to sit on.
      */
-    fun circularFace(source: Bitmap, size: Int): Bitmap {
+    fun circularFace(source: Bitmap?, size: Int, hasUnread: Boolean = false): Bitmap {
         val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
         val centre = size / 2f
@@ -56,16 +72,44 @@ object WatchFaceRenderer {
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Draw the circle first, then composite the photo through it. Drawing
-        // the photo first and cutting afterwards would leave hard, aliased
-        // edges — SRC_IN keeps the anti-aliased boundary of this circle.
-        canvas.drawCircle(centre, centre, radius, paint)
-        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
-        canvas.drawBitmap(source, null, centreCropInto(source, centre, radius), paint)
-        paint.xfermode = null
+        if (source == null) {
+            paint.color = EMPTY_FACE
+            canvas.drawCircle(centre, centre, radius, paint)
+        } else {
+            // Draw the circle first, then composite the photo through it.
+            // Drawing the photo first and cutting afterwards would leave hard,
+            // aliased edges — SRC_IN keeps this circle's anti-aliased boundary.
+            canvas.drawCircle(centre, centre, radius, paint)
+            paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+            canvas.drawBitmap(source, null, centreCropInto(source, centre, radius), paint)
+            paint.xfermode = null
 
-        drawScrim(canvas, centre, radius)
+            drawScrim(canvas, centre, radius)
+        }
+
+        if (hasUnread) drawUnreadDot(canvas, centre, radius, size)
         return output
+    }
+
+    /**
+     * A green dot sitting on the rim, at roughly one-thirty.
+     *
+     * Centred on the ring rather than inside it, so it reads as part of the
+     * bezel instead of something floating on the photo. The dark outline is
+     * what keeps it visible against a light picture — a flat green circle
+     * disappears against grass or a bright wall.
+     */
+    private fun drawUnreadDot(canvas: Canvas, centre: Float, radius: Float, size: Int) {
+        val angle = Math.toRadians(-45.0)
+        val x = centre + (radius * cos(angle)).toFloat()
+        val y = centre + (radius * sin(angle)).toFloat()
+        val dot = size * DOT_RATIO
+
+        val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DOT_OUTLINE }
+        canvas.drawCircle(x, y, dot + size * DOT_OUTLINE_RATIO, outline)
+
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DOT_GREEN }
+        canvas.drawCircle(x, y, dot, fill)
     }
 
     /**

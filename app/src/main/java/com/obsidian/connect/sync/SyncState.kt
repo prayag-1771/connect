@@ -38,10 +38,22 @@ class SyncState @Inject constructor(
         get() = Date(prefs.getLong(KEY_LAST_NUDGE, System.currentTimeMillis()))
         set(value) = prefs.edit().putLong(KEY_LAST_NUDGE, value.time).apply()
 
+    /**
+     * Timestamp of the newest message this phone has seen.
+     *
+     * Drives the unread dot on the watch face. Stored per device rather than
+     * in Firestore because "unread" here means unread *on this phone*, which
+     * is what a widget on this phone should reflect.
+     */
+    var lastReadMessageAt: Long
+        get() = prefs.getLong(KEY_LAST_READ_MESSAGE, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_READ_MESSAGE, value).apply()
+
     fun clear() = prefs.edit().clear().apply()
 
     private companion object {
         const val KEY_LAST_MOMENT = "last_moment_id"
         const val KEY_LAST_NUDGE = "last_nudge_at"
+        const val KEY_LAST_READ_MESSAGE = "last_read_message_at"
     }
 }

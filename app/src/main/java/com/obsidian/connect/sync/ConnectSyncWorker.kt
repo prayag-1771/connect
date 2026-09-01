@@ -5,12 +5,14 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.obsidian.connect.core.data.AuthRepository
+import com.obsidian.connect.core.data.MessageRepository
 import com.obsidian.connect.core.data.MomentRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.ReminderRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.messaging.Notifications
 import com.obsidian.connect.widget.MomentWidgetUpdater
+import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,7 @@ class ConnectSyncWorker @AssistedInject constructor(
     private val pairingRepository: PairingRepository,
     private val momentRepository: MomentRepository,
     private val reminderRepository: ReminderRepository,
+    private val messageRepository: MessageRepository,
     private val syncState: SyncState,
 ) : CoroutineWorker(context, params) {
 
@@ -57,6 +60,7 @@ class ConnectSyncWorker @AssistedInject constructor(
         val outcome = runCatching {
             syncWidget(pairingId, partnerId, partnerName)
             syncNudges(pairingId, uid)
+            syncUnread(pairingId, uid)
         }
 
         // Retry covers a flaky connection. There is always another scheduled
@@ -79,6 +83,26 @@ class ConnectSyncWorker @AssistedInject constructor(
             senderName = partnerName,
         )
         syncState.lastMomentId = latest.id
+    }
+
+    /**
+     * Drives the green dot on the watch face.
+     *
+     * Only redraws when the answer actually changes — a widget redraw costs a
+     * bitmap render and a Binder round trip to the launcher, and this runs
+     * every fifteen minutes whether anything happened or not.
+     */
+    private suspend fun syncUnread(pairingId: String, uid: String) {
+        val unread = messageRepository.unreadCount(
+            pairingId = pairingId,
+            uid = uid,
+            sinceMillis = syncState.lastReadMessageAt,
+        ) > 0
+
+        if (unread == WidgetCaptionStore.hasUnread(applicationContext)) return
+
+        WidgetCaptionStore.writeUnread(applicationContext, unread)
+        MomentWidgetUpdater.refresh(applicationContext)
     }
 
     private suspend fun syncNudges(pairingId: String, uid: String) {

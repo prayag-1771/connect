@@ -77,17 +77,18 @@ class WatchWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.widget_watch)
 
             val facePx = WatchFaceRenderer.sizeFor(requestedFacePx(context, manager, appWidgetId))
-            val photo = WidgetImageStore.decode(context, facePx)
 
-            if (photo == null) {
-                views.setViewVisibility(R.id.watch_photo, View.GONE)
-            } else {
-                views.setViewVisibility(R.id.watch_photo, View.VISIBLE)
-                views.setImageViewBitmap(
-                    R.id.watch_photo,
-                    WatchFaceRenderer.circularFace(photo, facePx),
-                )
-            }
+            // Always rendered, even with no photo yet: the renderer falls back
+            // to a plain disc, which gives the hands something to sit on and
+            // the unread dot a rim to sit on.
+            views.setImageViewBitmap(
+                R.id.watch_photo,
+                WatchFaceRenderer.circularFace(
+                    source = WidgetImageStore.decode(context, facePx),
+                    size = facePx,
+                    hasUnread = WidgetCaptionStore.hasUnread(context),
+                ),
+            )
 
             val caption = WidgetCaptionStore.read(context)
             if (caption.isNullOrBlank()) {
