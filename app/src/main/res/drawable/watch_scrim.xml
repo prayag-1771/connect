@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Hands are white, and a photo can be white too. This darkens the middle just
+  enough to keep them legible without hiding the picture.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <gradient
+        android:type="radial"
+        android:gradientRadius="55%p"
+        android:startColor="#66000000"
+        android:centerColor="#33000000"
+        android:endColor="#00000000" />
+</shape>

@@ -26,7 +26,10 @@ object MomentWidgetUpdater {
         caption: String,
         senderName: String,
     ) {
-        withContext(Dispatchers.IO) { WidgetImageStore.write(context, jpeg) }
+        withContext(Dispatchers.IO) {
+            WidgetImageStore.write(context, jpeg)
+            WidgetCaptionStore.write(context, caption, senderName)
+        }
 
         val manager = GlanceAppWidgetManager(context)
         manager.getGlanceIds(MomentWidget::class.java).forEach { glanceId ->
@@ -40,8 +43,15 @@ object MomentWidgetUpdater {
         }
 
         MomentWidget().updateAll(context)
+
+        // The watch widget is plain RemoteViews and knows nothing about Glance,
+        // so it has to be told separately. Both read the same photo and caption.
+        WatchWidgetProvider.refreshAll(context)
     }
 
-    /** Redraws from whatever is already on disk, without changing it. */
-    suspend fun refresh(context: Context) = MomentWidget().updateAll(context)
+    /** Redraws both styles from whatever is already on disk, without changing it. */
+    suspend fun refresh(context: Context) {
+        MomentWidget().updateAll(context)
+        WatchWidgetProvider.refreshAll(context)
+    }
 }

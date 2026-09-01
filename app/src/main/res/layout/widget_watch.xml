@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A plain RemoteViews layout rather than Glance.
+
+  AnalogClock keeps its own time: once the launcher has inflated this, the
+  hands move without the app being involved at all. Drawing a clock in Glance
+  would mean redrawing the widget every minute from a background process,
+  which is exactly the kind of work Android now goes out of its way to stop.
+
+  AnalogClock is deprecated but remains on the RemoteViews whitelist, and
+  nothing else in that whitelist can render moving hands.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:id="@+id/watch_root">
+
+    <ImageView
+        android:id="@+id/watch_photo"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:contentDescription="@string/watch_widget_photo" />
+
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/watch_scrim"
+        android:contentDescription="@null" />
+
+    <AnalogClock
+        android:id="@+id/watch_clock"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:dial="@drawable/watch_dial"
+        android:hand_hour="@drawable/watch_hand_hour"
+        android:hand_minute="@drawable/watch_hand_minute" />
+
+    <TextView
+        android:id="@+id/watch_caption"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="6dp"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="2dp"
+        android:background="#99000000"
+        android:textColor="#FFFFFFFF"
+        android:textSize="11sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:visibility="gone" />
+</FrameLayout>

@@ -3,6 +3,7 @@ package com.obsidian.connect
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -16,11 +17,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.obsidian.connect.draw.DrawScreen
 import com.obsidian.connect.reminders.RemindersScreen
 import com.obsidian.connect.send.CaptureScreen
 
 private enum class HomeTab(val label: String, val icon: ImageVector) {
     Capture("Send", Icons.Filled.PhotoCamera),
+    Draw("Draw", Icons.Outlined.Brush),
     Reminders("Reminders", Icons.Outlined.Checklist),
 }
 
@@ -55,6 +58,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
     ) { insets ->
         when (tabs[selected]) {
             HomeTab.Capture -> CaptureScreen(modifier = Modifier.padding(insets))
+            HomeTab.Draw -> DrawScreen(modifier = Modifier.padding(insets))
             HomeTab.Reminders -> RemindersScreen(modifier = Modifier.padding(insets))
         }
     }

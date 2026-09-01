@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Deliberately almost invisible. The photo is the dial; this only adds enough
+  edge and centre definition for the hands to read as a clock rather than as
+  two stray marks on someone's face.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+    <path
+        android:strokeColor="#59FFFFFF"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:pathData="M100,100m-92,0a92,92 0,1 1,184 0a92,92 0,1 1,-184 0" />
+    <path android:fillColor="#8CFFFFFF" android:pathData="M97,12h6v14h-6z" />
+    <path android:fillColor="#8CFFFFFF" android:pathData="M97,174h6v14h-6z" />
+    <path android:fillColor="#8CFFFFFF" android:pathData="M12,97h14v6h-14z" />
+    <path android:fillColor="#8CFFFFFF" android:pathData="M174,97h14v6h-14z" />
+</vector>
