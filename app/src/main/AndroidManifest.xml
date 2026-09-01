@@ -64,6 +64,10 @@
         </receiver>
 
         <receiver
+            android:name=".widget.ScheduleBoundaryReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".sync.BootReceiver"
             android:enabled="true"
             android:exported="false">

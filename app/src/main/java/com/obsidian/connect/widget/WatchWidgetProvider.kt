@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.provider.AlarmClock
 import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
@@ -77,20 +78,21 @@ class WatchWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.widget_watch)
 
             val facePx = WatchFaceRenderer.sizeFor(requestedFacePx(context, manager, appWidgetId))
+            val active = WidgetSchedule.isActive(context)
 
-            // Always rendered, even with no photo yet: the renderer falls back
-            // to a plain disc, which gives the hands something to sit on and
-            // the unread dot a rim to sit on.
+            // Outside the window this is a clock and nothing else. No photo, no
+            // caption, no dot — a face on a home screen all day should not be
+            // showing someone you love to whoever glances over your shoulder.
             views.setImageViewBitmap(
                 R.id.watch_photo,
                 WatchFaceRenderer.circularFace(
-                    source = WidgetImageStore.decode(context, facePx),
+                    source = if (active) WidgetImageStore.decode(context, facePx) else null,
                     size = facePx,
-                    hasUnread = WidgetCaptionStore.hasUnread(context),
+                    hasUnread = active && WidgetCaptionStore.hasUnread(context),
                 ),
             )
 
-            val caption = WidgetCaptionStore.read(context)
+            val caption = WidgetCaptionStore.read(context).takeIf { active }
             if (caption.isNullOrBlank()) {
                 views.setViewVisibility(R.id.watch_caption, View.GONE)
             } else {
@@ -98,7 +100,11 @@ class WatchWidgetProvider : AppWidgetProvider() {
                 views.setViewVisibility(R.id.watch_caption, View.VISIBLE)
             }
 
-            views.setOnClickPendingIntent(R.id.watch_root, openApp(context))
+            // Off-hours it behaves like the clock it is pretending to be.
+            views.setOnClickPendingIntent(
+                R.id.watch_root,
+                if (active) openApp(context) else openClock(context),
+            )
             return views
         }
 
@@ -123,18 +129,45 @@ class WatchWidgetProvider : AppWidgetProvider() {
             return (dp * context.resources.displayMetrics.density).toInt()
         }
 
+        /**
+         * Opens the phone's clock app.
+         *
+         * ACTION_SHOW_ALARMS is the only documented way to reach it without
+         * knowing the OEM's package name, which differs on every device. If
+         * nothing handles it — rare, but possible on a stripped ROM — falling
+         * back to our own app is better than a tap that does nothing.
+         */
+        private fun openClock(context: Context): PendingIntent {
+            val clock = Intent(AlarmClock.ACTION_SHOW_ALARMS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+            val resolves = clock.resolveActivity(context.packageManager) != null
+            if (!resolves) return openApp(context)
+
+            return PendingIntent.getActivity(
+                context,
+                CLOCK_REQUEST,
+                clock,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
         private fun openApp(context: Context): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             }
             return PendingIntent.getActivity(
                 context,
-                0,
+                APP_REQUEST,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
         }
 
         private const val DEFAULT_FACE_DP = 160
+
+        // Distinct request codes, or the two intents would overwrite each other.
+        private const val APP_REQUEST = 0
+        private const val CLOCK_REQUEST = 1
     }
 }

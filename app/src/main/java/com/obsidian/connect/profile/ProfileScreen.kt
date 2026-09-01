@@ -69,6 +69,8 @@ fun ProfileScreen(
             }
         }
 
+        WatchScheduleCard()
+
         state.error?.let { message ->
             Text(
                 text = message,

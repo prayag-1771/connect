@@ -3,6 +3,7 @@ package com.obsidian.connect.sync
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.obsidian.connect.widget.ScheduleBoundaryReceiver
 
 /**
  * Restores the sync schedule after a reboot.
@@ -20,5 +21,7 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         SyncScheduler.schedulePeriodic(context)
         SyncScheduler.now(context)
+        // Alarms do not survive a reboot.
+        ScheduleBoundaryReceiver.schedule(context)
     }
 }

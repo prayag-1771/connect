@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.obsidian.connect.messaging.Notifications
 import com.obsidian.connect.sync.SyncScheduler
+import com.obsidian.connect.widget.ScheduleBoundaryReceiver
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -28,6 +29,9 @@ class ConnectApplication : Application(), Configuration.Provider {
         // updates a widget while the app is closed.
         SyncScheduler.schedulePeriodic(this)
         SyncScheduler.now(this)
+
+        // Flips the watch face over when the active window opens or closes.
+        ScheduleBoundaryReceiver.schedule(this)
     }
 
     override val workManagerConfiguration: Configuration
