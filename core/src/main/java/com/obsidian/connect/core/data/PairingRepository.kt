@@ -1,0 +1,84 @@
+package com.obsidian.connect.core.data
+
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
+import com.obsidian.connect.core.FirestorePaths
+import com.obsidian.connect.core.model.Pairing
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.tasks.await
+import java.security.SecureRandom
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class PairingRepository @Inject constructor(
+    private val firestore: FirebaseFirestore,
+) {
+    private val pairings get() = firestore.collection(FirestorePaths.PAIRINGS)
+    private val users get() = firestore.collection(FirestorePaths.USERS)
+
+    fun observe(pairingId: String): Flow<Pairing?> = pairings.document(pairingId).asFlow()
+
+    /** Opens a pairing with one member and a code for the other person to enter. */
+    suspend fun createInvite(uid: String): Result<Pairing> = runCatching {
+        val code = generateInviteCode()
+        val doc = pairings.document()
+
+        firestore.runBatch { batch ->
+            batch.set(
+                doc,
+                mapOf(
+                    "members" to listOf(uid),
+                    "inviteCode" to code,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                ),
+            )
+            batch.set(users.document(uid), mapOf("pairingId" to doc.id), SetOptions.merge())
+        }.await()
+
+        Pairing(id = doc.id, members = listOf(uid), inviteCode = code)
+    }
+
+    /**
+     * Joins an existing invite.
+     *
+     * Runs in a transaction because two people racing on the same code would
+     * otherwise both pass the "is there room" check and land a three-member
+     * pairing in the database, which nothing downstream knows how to handle.
+     */
+    suspend fun join(uid: String, inviteCode: String): Result<String> = runCatching {
+        val code = inviteCode.trim().uppercase()
+        val match = pairings.whereEqualTo("inviteCode", code).limit(1).get().await()
+        val ref = match.documents.firstOrNull()?.reference
+            ?: error("That code doesn't match any invite")
+
+        firestore.runTransaction { txn ->
+            val pairing = txn.get(ref).toObject(Pairing::class.java)
+                ?: error("That invite no longer exists")
+
+            if (uid !in pairing.members) {
+                check(!pairing.isComplete) { "That invite has already been used" }
+                txn.update(ref, "members", FieldValue.arrayUnion(uid))
+                txn.set(users.document(uid), mapOf("pairingId" to ref.id), SetOptions.merge())
+            }
+            ref.id
+        }.await()
+    }
+
+    /**
+     * Six characters from an alphabet with I, O, 0 and 1 removed, because these
+     * codes get read aloud and those four are the ones people mishear.
+     */
+    private fun generateInviteCode(): String {
+        val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        val random = SecureRandom()
+        return buildString {
+            repeat(CODE_LENGTH) { append(alphabet[random.nextInt(alphabet.length)]) }
+        }
+    }
+
+    private companion object {
+        const val CODE_LENGTH = 6
+    }
+}
