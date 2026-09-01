@@ -8,6 +8,7 @@ import com.obsidian.connect.core.data.StrokeRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.core.model.Stroke
 import com.obsidian.connect.sync.SyncState
+import com.obsidian.connect.widget.DrawingBubble
 import com.obsidian.connect.widget.WatchWidgetProvider
 import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -65,6 +66,7 @@ class DrawingOverlayViewModel @Inject constructor(
             }
 
         WidgetCaptionStore.writeNewDrawing(context, false)
+        DrawingBubble.hide(context)
         WatchWidgetProvider.refreshAll(context)
     }
 }

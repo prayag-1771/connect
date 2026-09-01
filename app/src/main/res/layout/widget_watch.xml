@@ -55,20 +55,6 @@
         android:contentDescription="@string/watch_widget_unread"
         android:visibility="gone" />
 
-    <!--
-      The blue corner light: someone has drawn something. Both the indicator
-      and its own tap target, which is why it is a real drawable rather than
-      painted into the face bitmap like the green dot.
-    -->
-    <ImageView
-        android:id="@+id/watch_drawing_glow"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
-        android:layout_gravity="top|center_horizontal"
-        android:src="@drawable/drawing_glow"
-        android:contentDescription="@string/watch_widget_drawing"
-        android:visibility="gone" />
-
     <TextView
         android:id="@+id/watch_caption"
         android:layout_width="wrap_content"

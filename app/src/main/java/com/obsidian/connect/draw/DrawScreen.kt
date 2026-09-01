@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +69,12 @@ fun DrawScreen(
     // view model so every touch sample does not cross a StateFlow.
     val inProgress = remember { mutableListOf<StrokePoint>().toMutableStateList() }
     var confirmingClear by remember { mutableStateOf(false) }
+
+    // Only while this screen is composed. Looking at the canvas is what counts
+    // as having seen it; having the app open on another tab does not.
+    LaunchedEffect(strokes) {
+        if (strokes.isNotEmpty()) viewModel.markSeen()
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         Box(

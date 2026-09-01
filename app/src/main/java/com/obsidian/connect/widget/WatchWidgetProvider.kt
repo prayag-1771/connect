@@ -12,7 +12,6 @@ import android.view.View
 import android.widget.RemoteViews
 import com.obsidian.connect.MainActivity
 import com.obsidian.connect.chat.QuickReplyActivity
-import com.obsidian.connect.draw.DrawingOverlayActivity
 import com.obsidian.connect.R
 
 /**
@@ -119,16 +118,6 @@ class WatchWidgetProvider : AppWidgetProvider() {
                 views.setOnClickPendingIntent(R.id.watch_unread_touch, openQuickReply(context))
             }
 
-            // Blue corner light: the other person has drawn something.
-            val newDrawing = active && WidgetCaptionStore.hasNewDrawing(context)
-            views.setViewVisibility(
-                R.id.watch_drawing_glow,
-                if (newDrawing) View.VISIBLE else View.GONE,
-            )
-            if (newDrawing) {
-                views.setOnClickPendingIntent(R.id.watch_drawing_glow, openDrawing(context))
-            }
-
             return views
         }
 
@@ -151,18 +140,6 @@ class WatchWidgetProvider : AppWidgetProvider() {
             // The face is a circle, so the limiting dimension is the smaller one.
             val dp = listOf(widthDp, heightDp).filter { it > 0 }.minOrNull() ?: DEFAULT_FACE_DP
             return (dp * context.resources.displayMetrics.density).toInt()
-        }
-
-        /** Opens the drawing over whatever is on screen. */
-        private fun openDrawing(context: Context): PendingIntent {
-            val intent = Intent(context, DrawingOverlayActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            return PendingIntent.getActivity(
-                context,
-                DRAWING_REQUEST,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
         }
 
         /** Opens the reply strip over the home screen. */
@@ -241,7 +218,6 @@ class WatchWidgetProvider : AppWidgetProvider() {
         private const val APP_REQUEST = 0
         private const val CLOCK_REQUEST = 1
         private const val REPLY_REQUEST = 2
-        private const val DRAWING_REQUEST = 3
 
         /** Checked in order when the resolved package has no launcher entry. */
         private val KNOWN_CLOCK_PACKAGES = listOf(

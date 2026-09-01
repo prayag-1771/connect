@@ -13,6 +13,7 @@ import com.obsidian.connect.core.data.StrokeRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.messaging.Notifications
 import com.obsidian.connect.widget.MomentWidgetUpdater
+import com.obsidian.connect.widget.DrawingBubble
 import com.obsidian.connect.widget.WatchWidgetProvider
 import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.assisted.Assisted
@@ -128,7 +129,10 @@ class ConnectSyncWorker @AssistedInject constructor(
 
         syncState.lastSeenStrokeAt = newestFromPartner
         WidgetCaptionStore.writeNewDrawing(applicationContext, true)
-        WatchWidgetProvider.refreshAll(applicationContext)
+
+        // The indicator lives on the screen, not on the widget, so it has to
+        // be raised on the main thread — a window cannot be added from here.
+        withContext(Dispatchers.Main) { DrawingBubble.show(applicationContext) }
     }
 
     private suspend fun syncNudges(pairingId: String, uid: String) {

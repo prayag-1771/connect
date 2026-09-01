@@ -9,6 +9,7 @@ import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.core.model.Stroke
 import com.obsidian.connect.core.model.StrokePoint
 import com.obsidian.connect.sync.SyncState
+import com.obsidian.connect.widget.DrawingBubble
 import com.obsidian.connect.widget.WatchWidgetProvider
 import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -48,28 +49,6 @@ class DrawViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), emptyList())
 
-    init {
-        // Declared after `strokes` on purpose: Kotlin runs initialisers in
-        // declaration order, so an init block above it would collect a property
-        // that has not been assigned yet.
-        viewModelScope.launch {
-            strokes.collect { current ->
-                if (current.isEmpty()) return@collect
-
-                // Looking at the canvas counts as having seen it, so the blue
-                // light goes out rather than announcing something already read.
-                val uid = authRepository.currentUid
-                val newest = current.filter { it.senderId != uid }
-                    .maxOfOrNull { it.createdAtMillis }
-                if (newest != null && newest > syncState.lastSeenStrokeAt) {
-                    syncState.lastSeenStrokeAt = newest
-                }
-                WidgetCaptionStore.writeNewDrawing(context, false)
-                WatchWidgetProvider.refreshAll(context)
-            }
-        }
-    }
-
     private val _color = MutableStateFlow(DrawPalette.default)
     val color: StateFlow<Long> = _color.asStateFlow()
 
@@ -107,6 +86,30 @@ class DrawViewModel @Inject constructor(
                 width = _width.value,
             )
         }
+    }
+
+    /**
+     * Marks the canvas seen and puts the blue indicator out.
+     *
+     * Called from the screen while it is actually on display, not from an init
+     * block. This view model is scoped to the activity, so a collector started
+     * here would keep running for the life of the app and clear the indicator
+     * on every incoming stroke — even with the Draw tab nowhere in sight. That
+     * is why the light only ever appeared once.
+     */
+    fun markSeen() {
+        val uid = authRepository.currentUid
+        val newest = strokes.value
+            .filter { it.senderId != uid }
+            .maxOfOrNull { it.createdAtMillis }
+
+        if (newest != null && newest > syncState.lastSeenStrokeAt) {
+            syncState.lastSeenStrokeAt = newest
+        }
+
+        WidgetCaptionStore.writeNewDrawing(context, false)
+        DrawingBubble.hide(context)
+        WatchWidgetProvider.refreshAll(context)
     }
 
     fun clear() {

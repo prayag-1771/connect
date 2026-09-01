@@ -21,14 +21,20 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.obsidian.connect.widget.DrawingBubble
 
 /**
  * Account and pairing controls — the way back out.
@@ -70,6 +76,8 @@ fun ProfileScreen(
         }
 
         WatchScheduleCard()
+
+        DrawingIndicatorCard()
 
         state.error?.let { message ->
             Text(
@@ -151,6 +159,48 @@ fun ProfileScreen(
                 TextButton(onClick = { confirmingSignOut = false }) { Text("Cancel") }
             },
         )
+    }
+}
+
+/**
+ * Overlay permission, which drives the floating blue drawing indicator.
+ *
+ * Not a runtime permission — Android only grants it through a Settings screen,
+ * so there is nothing to request in-app beyond sending the user there.
+ */
+@Composable
+private fun DrawingIndicatorCard() {
+    val context = LocalContext.current
+    var granted by remember { mutableStateOf(DrawingBubble.canShow(context)) }
+
+    // Re-checked on resume, since the answer changes in Settings rather than here.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) granted = DrawingBubble.canShow(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    if (granted) return
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Show drawings over the screen", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "A blue light appears on the edge of your screen when they " +
+                    "draw something. Android needs permission for anything drawn " +
+                    "over other apps.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+            )
+            OutlinedButton(
+                onClick = { context.startActivity(DrawingBubble.settingsIntent(context)) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Open settings") }
+        }
     }
 }
 
