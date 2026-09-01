@@ -22,6 +22,8 @@ release/
 # Firebase — secrets, never commit
 google-services.json
 serviceAccountKey.json
+# Names a specific personal Firebase project; anyone cloning uses their own.
+.firebaserc
 .firebase/
 firebase-debug.log
 
