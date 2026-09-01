@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Framework theme rather than a Material Components one: the UI is entirely
+      Compose, so pulling in the View-based Material library would add a
+      dependency nothing renders with.
+    -->
+    <style name="Theme.Connect" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
