@@ -25,8 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.concurrent.futures.await
 import androidx.core.content.ContextCompat
-import java.util.concurrent.Executor
 
 /** Which way the camera is pointing. */
 enum class Lens { Front, Back }
@@ -67,13 +67,20 @@ fun CameraCapture(
             .build()
     }
 
+    // Held so it can be unbound on dispose. CameraX 1.4 hands the provider
+    // back through a ListenableFuture, and resolving that future again just to
+    // release the camera would mean blocking the main thread on get().
+    var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+
     // Rebinding on lens change is the documented way to switch cameras; a
     // provider can only have one camera bound to a lifecycle at a time.
     LaunchedEffect(hasPermission, lens) {
         if (!hasPermission) return@LaunchedEffect
 
         runCatching {
-            val provider = ProcessCameraProvider.awaitInstance(context)
+            val provider = ProcessCameraProvider.getInstance(context).await()
+            cameraProvider = provider
+
             val preview = Preview.Builder().build().apply {
                 surfaceProvider = previewView.surfaceProvider
             }
@@ -92,7 +99,7 @@ fun CameraCapture(
         if (!captureRequested || !hasPermission) return@LaunchedEffect
 
         imageCapture.takePicture(
-            ContextCompat.getMainExecutor(context) as Executor,
+            ContextCompat.getMainExecutor(context),
             object : ImageCapture.OnImageCapturedCallback() {
                 override fun onCaptureSuccess(image: ImageProxy) {
                     // The proxy holds a buffer from a fixed-size pool. Failing
@@ -108,9 +115,7 @@ fun CameraCapture(
     }
 
     DisposableEffect(Unit) {
-        onDispose {
-            runCatching { ProcessCameraProvider.getInstance(context).get().unbindAll() }
-        }
+        onDispose { cameraProvider?.unbindAll() }
     }
 
     Box(modifier = modifier) {

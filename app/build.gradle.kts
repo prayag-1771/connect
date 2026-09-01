@@ -95,6 +95,8 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.exifinterface)
+    // Supplies ListenableFuture.await(); CameraX 1.4 has no suspend accessor.
+    implementation(libs.androidx.concurrent.futures.ktx)
 
     implementation(libs.coil.compose)
 
