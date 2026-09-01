@@ -39,16 +39,18 @@ Minimum SDK 26 (Android 8.0), target SDK 35.
 
 ## Getting started
 
-You need Android Studio and a Firebase project.
+Full instructions are in [docs/SETUP.md](docs/SETUP.md). The short version:
 
-1. Clone the repo and open it in Android Studio.
-2. Create a Firebase project and register an Android app with the package
-   name `com.obsidian.connect`.
-3. Download `google-services.json` into `app/`. This file is gitignored —
-   it never gets committed.
-4. Enable Firestore, Storage, Authentication, and Cloud Messaging in the
-   Firebase console.
-5. Sync Gradle and run.
+1. Create a Firebase project, register an Android app as
+   `com.obsidian.connect`, and drop its `google-services.json` into `app/`.
+2. Enable Authentication (email/password), Firestore, Storage and Cloud
+   Messaging.
+3. `firebase deploy` the rules, indexes and functions.
+4. `./gradlew assembleDebug` and install on **two** phones.
+
+Two devices is a hard requirement, not a suggestion — the widget only ever
+shows what the other person sent, so a single device gets you as far as an
+invite code with nobody to give it to.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the photo-to-widget
 pipeline actually works.
