@@ -12,7 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.People
-import androidx.compose.material.icons.outlined.PlaylistAddCheck
+import androidx.compose.material.icons.automirrored.outlined.PlaylistAddCheck
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -214,7 +214,7 @@ private fun EmptyState(scope: ReminderScope, paired: Boolean) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
-            imageVector = Icons.Outlined.PlaylistAddCheck,
+            imageVector = Icons.AutoMirrored.Outlined.PlaylistAddCheck,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )

@@ -98,6 +98,21 @@ dependencies {
     // Supplies ListenableFuture.await(); CameraX 1.4 has no suspend accessor.
     implementation(libs.androidx.concurrent.futures.ktx)
 
+    // camera-core exposes ListenableFuture across its public API, yet nothing
+    // puts that interface on the *compile* classpath. Guava arrives only as a
+    // runtime dependency, and the standalone listenablefuture artifact is
+    // always upgraded to guava's "9999.0-empty-to-avoid-conflict" placeholder,
+    // which is an intentionally empty jar containing no classes.
+    //
+    // Asking for listenablefuture:1.0 does not help even as compileOnly, since
+    // it lands in the same conflict resolution and loses to 9999.0 again. Guava
+    // proper is not subject to that swap, so it is what goes here.
+    //
+    // compileOnly keeps the runtime graph untouched: guava still supplies the
+    // real class on device, nothing extra is packaged, and there is no
+    // duplicate class. Declaring it as implementation fails the build.
+    compileOnly(libs.guava)
+
     implementation(libs.coil.compose)
 
     implementation(libs.hilt.android)
