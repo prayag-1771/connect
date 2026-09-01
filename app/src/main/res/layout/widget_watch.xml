@@ -42,17 +42,31 @@
 
     <!--
       Tap target for the unread dot, which is painted into the photo bitmap and
-      so cannot be clicked on its own. Sits over the top-right quadrant where
-      the dot lands. An ImageView because plain View is not on the RemoteViews
+      so cannot be clicked on its own. Top-left, matching where the renderer
+      puts the dot. An ImageView because plain View is not on the RemoteViews
       whitelist.
     -->
     <ImageView
         android:id="@+id/watch_unread_touch"
-        android:layout_width="76dp"
-        android:layout_height="76dp"
-        android:layout_gravity="top|end"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_gravity="top|start"
         android:background="@android:color/transparent"
         android:contentDescription="@string/watch_widget_unread"
+        android:visibility="gone" />
+
+    <!--
+      The blue corner light: someone has drawn something. Both the indicator
+      and its own tap target, which is why it is a real drawable rather than
+      painted into the face bitmap like the green dot.
+    -->
+    <ImageView
+        android:id="@+id/watch_drawing_glow"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_gravity="top|end"
+        android:src="@drawable/drawing_glow"
+        android:contentDescription="@string/watch_widget_drawing"
         android:visibility="gone" />
 
     <TextView

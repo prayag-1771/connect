@@ -9,4 +9,6 @@
     <string name="watch_widget_description">A clock face made from their latest photo.</string>
     <string name="watch_widget_photo">Latest photo from the person you\'re paired with</string>
     <string name="watch_widget_unread">Unread message — tap to reply</string>
+    <string name="watch_widget_drawing">New drawing — tap to see it</string>
+
 </resources>

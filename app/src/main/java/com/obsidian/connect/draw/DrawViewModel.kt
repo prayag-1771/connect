@@ -1,5 +1,6 @@
 package com.obsidian.connect.draw
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.obsidian.connect.core.data.AuthRepository
@@ -7,7 +8,13 @@ import com.obsidian.connect.core.data.StrokeRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.core.model.Stroke
 import com.obsidian.connect.core.model.StrokePoint
+import com.obsidian.connect.sync.SyncState
+import com.obsidian.connect.widget.StrokeRasterizer
+import com.obsidian.connect.widget.WatchWidgetProvider
+import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,14 +26,17 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class DrawViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val authRepository: AuthRepository,
     userRepository: UserRepository,
     private val strokeRepository: StrokeRepository,
+    private val syncState: SyncState,
 ) : ViewModel() {
 
     private val pairingId: StateFlow<String?> = authRepository.uidFlow
@@ -40,6 +50,34 @@ class DrawViewModel @Inject constructor(
             if (id == null) flowOf(emptyList()) else strokeRepository.observe(id)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), emptyList())
+
+    init {
+        // Declared after `strokes` on purpose: Kotlin runs initialisers in
+        // declaration order, so an init block above it would collect a property
+        // that has not been assigned yet.
+        viewModelScope.launch {
+            strokes.collect { current ->
+                if (current.isEmpty()) return@collect
+
+                // Keep the rasterised copy current so the overlay opens
+                // instantly from a home screen with nothing to fetch.
+                withContext(Dispatchers.Default) {
+                    StrokeRasterizer.render(context, current)
+                }
+
+                // Looking at the canvas counts as having seen it, so the blue
+                // light goes out rather than announcing something already read.
+                val uid = authRepository.currentUid
+                val newest = current.filter { it.senderId != uid }
+                    .maxOfOrNull { it.createdAtMillis }
+                if (newest != null && newest > syncState.lastSeenStrokeAt) {
+                    syncState.lastSeenStrokeAt = newest
+                }
+                WidgetCaptionStore.writeNewDrawing(context, false)
+                WatchWidgetProvider.refreshAll(context)
+            }
+        }
+    }
 
     private val _color = MutableStateFlow(DrawPalette.default)
     val color: StateFlow<Long> = _color.asStateFlow()

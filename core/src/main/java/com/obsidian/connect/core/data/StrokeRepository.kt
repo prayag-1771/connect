@@ -34,6 +34,15 @@ class StrokeRepository @Inject constructor(
             .limitToLast(limit)
             .asFlow()
 
+    /** One-shot read, for the background render with no lifecycle to observe from. */
+    suspend fun latest(pairingId: String, limit: Long = MAX_STROKES): List<Stroke> =
+        strokes(pairingId)
+            .orderBy("createdAtMillis", Query.Direction.ASCENDING)
+            .limitToLast(limit)
+            .get()
+            .await()
+            .toObjects(Stroke::class.java)
+
     suspend fun add(
         pairingId: String,
         senderId: String,

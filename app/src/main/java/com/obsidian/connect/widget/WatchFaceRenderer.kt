@@ -92,7 +92,10 @@ object WatchFaceRenderer {
     }
 
     /**
-     * A green dot sitting on the rim, at roughly one-thirty.
+     * A green dot sitting on the rim, at roughly ten-thirty.
+     *
+     * Top-left rather than top-right so it does not collide with the blue
+     * corner light, which marks a new drawing and needs its own tap target.
      *
      * Centred on the ring rather than inside it, so it reads as part of the
      * bezel instead of something floating on the photo. The dark outline is
@@ -100,7 +103,7 @@ object WatchFaceRenderer {
      * disappears against grass or a bright wall.
      */
     private fun drawUnreadDot(canvas: Canvas, centre: Float, radius: Float, size: Int) {
-        val angle = Math.toRadians(-45.0)
+        val angle = Math.toRadians(-135.0)
         val x = centre + (radius * cos(angle)).toFloat()
         val y = centre + (radius * sin(angle)).toFloat()
         val dot = size * DOT_RATIO

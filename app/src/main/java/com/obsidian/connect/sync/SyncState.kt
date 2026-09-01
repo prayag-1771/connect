@@ -49,11 +49,17 @@ class SyncState @Inject constructor(
         get() = prefs.getLong(KEY_LAST_READ_MESSAGE, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_READ_MESSAGE, value).apply()
 
+    /** Newest stroke this phone has already shown, so the blue light is not re-lit. */
+    var lastSeenStrokeAt: Long
+        get() = prefs.getLong(KEY_LAST_STROKE, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_STROKE, value).apply()
+
     fun clear() = prefs.edit().clear().apply()
 
     private companion object {
         const val KEY_LAST_MOMENT = "last_moment_id"
         const val KEY_LAST_NUDGE = "last_nudge_at"
         const val KEY_LAST_READ_MESSAGE = "last_read_message_at"
+        const val KEY_LAST_STROKE = "last_seen_stroke_at"
     }
 }

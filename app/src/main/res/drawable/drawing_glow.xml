@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The blue light marking a new drawing.
+
+  A soft radial fade rather than a hard dot, so it reads as a glow in the
+  corner of the widget rather than as a second status pip competing with the
+  green one on the rim.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <gradient
+        android:type="radial"
+        android:gradientRadius="50%p"
+        android:startColor="#E64A9DFF"
+        android:centerColor="#804A9DFF"
+        android:endColor="#004A9DFF" />
+</shape>

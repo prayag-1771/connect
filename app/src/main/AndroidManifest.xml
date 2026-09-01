@@ -2,6 +2,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+      Android 11 hides other apps from us unless we say what we are looking
+      for. Without this, resolveActivity for the clock returns null even
+      though a clock app is plainly installed, and the off-hours tap falls
+      back to opening Connect — which is exactly what it must not do.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SHOW_ALARMS" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SET_ALARM" />
+        </intent>
+    </queries>
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -41,6 +56,15 @@
             android:taskAffinity=""
             android:theme="@style/Theme.Connect.QuickReply"
             android:windowSoftInputMode="adjustResize|stateVisible" />
+
+        <activity
+            android:name=".draw.DrawingOverlayActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Connect.QuickReply" />
 
         <receiver
             android:name=".widget.MomentWidgetReceiver"

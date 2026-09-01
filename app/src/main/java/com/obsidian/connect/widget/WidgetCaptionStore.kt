@@ -18,6 +18,7 @@ object WidgetCaptionStore {
     private const val KEY_CAPTION = "caption"
     private const val KEY_SENDER = "sender"
     private const val KEY_UNREAD = "unread"
+    private const val KEY_NEW_DRAWING = "new_drawing"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -42,6 +43,14 @@ object WidgetCaptionStore {
     }
 
     fun hasUnread(context: Context): Boolean = prefs(context).getBoolean(KEY_UNREAD, false)
+
+    /** Whether the other person has drawn something this phone has not shown. */
+    fun writeNewDrawing(context: Context, pending: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NEW_DRAWING, pending).apply()
+    }
+
+    fun hasNewDrawing(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NEW_DRAWING, false)
 
     fun readSender(context: Context): String? = prefs(context).getString(KEY_SENDER, null)
 

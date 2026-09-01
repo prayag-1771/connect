@@ -9,9 +9,12 @@ import com.obsidian.connect.core.data.MessageRepository
 import com.obsidian.connect.core.data.MomentRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.ReminderRepository
+import com.obsidian.connect.core.data.StrokeRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.messaging.Notifications
 import com.obsidian.connect.widget.MomentWidgetUpdater
+import com.obsidian.connect.widget.StrokeRasterizer
+import com.obsidian.connect.widget.WatchWidgetProvider
 import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -40,6 +43,7 @@ class ConnectSyncWorker @AssistedInject constructor(
     private val momentRepository: MomentRepository,
     private val reminderRepository: ReminderRepository,
     private val messageRepository: MessageRepository,
+    private val strokeRepository: StrokeRepository,
     private val syncState: SyncState,
 ) : CoroutineWorker(context, params) {
 
@@ -61,6 +65,7 @@ class ConnectSyncWorker @AssistedInject constructor(
             syncWidget(pairingId, partnerId, partnerName)
             syncNudges(pairingId, uid)
             syncUnread(pairingId, uid)
+            syncDrawing(pairingId, uid)
         }
 
         // Retry covers a flaky connection. There is always another scheduled
@@ -103,6 +108,30 @@ class ConnectSyncWorker @AssistedInject constructor(
 
         WidgetCaptionStore.writeUnread(applicationContext, unread)
         MomentWidgetUpdater.refresh(applicationContext)
+    }
+
+    /**
+     * Lights the blue corner when the other person has drawn something.
+     *
+     * The canvas is rasterised here rather than when the overlay opens, so a
+     * tap on that light shows the drawing immediately instead of waiting on a
+     * network round trip from a home screen.
+     */
+    private suspend fun syncDrawing(pairingId: String, uid: String) {
+        val strokes = strokeRepository.latest(pairingId)
+        if (strokes.isEmpty()) return
+
+        val newestFromPartner = strokes
+            .filter { it.senderId != uid }
+            .maxOfOrNull { it.createdAtMillis }
+            ?: return
+
+        if (newestFromPartner <= syncState.lastSeenStrokeAt) return
+
+        StrokeRasterizer.render(applicationContext, strokes)
+        syncState.lastSeenStrokeAt = newestFromPartner
+        WidgetCaptionStore.writeNewDrawing(applicationContext, true)
+        WatchWidgetProvider.refreshAll(applicationContext)
     }
 
     private suspend fun syncNudges(pairingId: String, uid: String) {
