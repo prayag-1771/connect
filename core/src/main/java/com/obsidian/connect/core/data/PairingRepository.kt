@@ -71,6 +71,31 @@ class PairingRepository @Inject constructor(
     }
 
     /**
+     * Withdraws an invite nobody has accepted.
+     *
+     * Without this, tapping "Create an invite" is irreversible: the pairing id
+     * is written to the user document, so the app opens on the waiting screen
+     * forever — a reinstall does not help, because the state is on the server.
+     *
+     * Refuses once someone has joined. Tearing down a live pairing would strand
+     * the other person on a dangling id, and leaving is a different operation
+     * needing its own confirmation.
+     */
+    suspend fun cancelInvite(uid: String, pairingId: String): Result<Unit> = runCatching {
+        val ref = pairings.document(pairingId)
+        val pairing = ref.get().await().toObject(Pairing::class.java)
+            ?: error("That invite no longer exists")
+
+        check(!pairing.isComplete) { "Someone already joined this one" }
+        check(uid in pairing.members) { "That isn't your invite" }
+
+        firestore.runBatch { batch ->
+            batch.delete(ref)
+            batch.update(users.document(uid), "pairingId", null)
+        }.await()
+    }
+
+    /**
      * Six characters from an alphabet with I, O, 0 and 1 removed, because these
      * codes get read aloud and those four are the ones people mishear.
      */

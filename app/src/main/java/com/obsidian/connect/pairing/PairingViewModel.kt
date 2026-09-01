@@ -92,6 +92,20 @@ class PairingViewModel @Inject constructor(
         }
     }
 
+    fun cancelInvite() {
+        val uid = authRepository.currentUid ?: return
+        val pairingId = pairing.value?.id ?: return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, error = null) }
+            pairingRepository.cancelInvite(uid, pairingId)
+                .onSuccess { _uiState.update { it.copy(busy = false) } }
+                .onFailure { e ->
+                    _uiState.update { it.copy(busy = false, error = e.message ?: "Couldn't cancel that") }
+                }
+        }
+    }
+
     fun clearError() = _uiState.update { it.copy(error = null) }
 
     private companion object {

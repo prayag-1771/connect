@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -64,7 +65,11 @@ fun PairingScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (current != null) {
-            WaitingForPartner(pairing = current)
+            WaitingForPartner(
+                pairing = current,
+                busy = uiState.busy,
+                onCancel = viewModel::cancelInvite,
+            )
         } else {
             StartPairing(
                 busy = uiState.busy,
@@ -86,7 +91,11 @@ fun PairingScreen(
 }
 
 @Composable
-private fun WaitingForPartner(pairing: Pairing) {
+private fun WaitingForPartner(
+    pairing: Pairing,
+    busy: Boolean,
+    onCancel: () -> Unit,
+) {
     Text(
         text = "Share this code",
         style = MaterialTheme.typography.headlineSmall,
@@ -120,6 +129,15 @@ private fun WaitingForPartner(pairing: Pairing) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+
+    Spacer(Modifier.height(24.dp))
+
+    // Without this the screen is a dead end. Creating an invite writes the
+    // pairing id onto the user document, so there is no way back to the start
+    // — not even by reinstalling, since the state lives on the server.
+    TextButton(onClick = onCancel, enabled = !busy) {
+        Text("Cancel this invite")
+    }
 }
 
 @Composable
