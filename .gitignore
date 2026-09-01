@@ -1,0 +1,40 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+release/
+
+# Firebase — secrets, never commit
+google-services.json
+serviceAccountKey.json
+.firebase/
+firebase-debug.log
+
+# Signing keys
+*.jks
+*.keystore
+keystore.properties
+
+# Node (Cloud Functions)
+node_modules/
+npm-debug.log*
+functions/lib/
+
+# OS
+.DS_Store
+Thumbs.db
