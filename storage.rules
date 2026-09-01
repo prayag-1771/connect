@@ -1,0 +1,28 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Photos are keyed by pairing, and access is checked against that
+    // pairing's member list in Firestore. This is why the client pushes a
+    // Storage path rather than a download URL — a download URL bypasses these
+    // rules entirely for anyone who gets hold of it.
+    match /moments/{pairingId}/{fileName} {
+      function isMember() {
+        return request.auth != null
+          && request.auth.uid in firestore.get(
+               /databases/(default)/documents/pairings/$(pairingId)
+             ).data.members;
+      }
+
+      allow read: if isMember();
+      allow write: if isMember()
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

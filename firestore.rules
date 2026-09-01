@@ -1,0 +1,75 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function membersOf(pairingId) {
+      return get(/databases/$(database)/documents/pairings/$(pairingId)).data.members;
+    }
+
+    function isMember(pairingId) {
+      return signedIn() && uid() in membersOf(pairingId);
+    }
+
+    match /users/{userId} {
+      // Readable by any signed-in user so a partner can show your name and
+      // avatar. Nothing sensitive lives on this document beyond the FCM token,
+      // which is useless without the server credential needed to send to it.
+      allow read: if signedIn();
+      allow write: if signedIn() && uid() == userId;
+    }
+
+    match /pairings/{pairingId} {
+      // Open to any signed-in user because joining works by querying for an
+      // invite code, which has to happen before you are a member. A pairing
+      // document holds only a member list and a code, so the exposure is
+      // small — but moving codes into their own collection would remove it
+      // entirely and is worth doing before this goes public.
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.members == [uid()];
+
+      // The only permitted update is a second person joining. Members can be
+      // added but never removed or replaced, so nobody can evict a partner.
+      allow update: if signedIn()
+        && resource.data.members.size() == 1
+        && request.resource.data.members == resource.data.members.concat([uid()]);
+
+      allow delete: if isMember(pairingId);
+
+      match /messages/{messageId} {
+        allow read: if isMember(pairingId);
+        allow create: if isMember(pairingId)
+          && request.resource.data.senderId == uid();
+        allow update, delete: if false;
+      }
+
+      match /strokes/{strokeId} {
+        allow read: if isMember(pairingId);
+        allow create: if isMember(pairingId)
+          && request.resource.data.senderId == uid();
+        allow update: if false;
+        // Either person can clear the canvas.
+        allow delete: if isMember(pairingId);
+      }
+    }
+
+    match /moments/{momentId} {
+      allow read: if isMember(resource.data.pairingId);
+      allow create: if signedIn()
+        && request.resource.data.senderId == uid()
+        && isMember(request.resource.data.pairingId);
+      allow update: if false;
+      allow delete: if isMember(resource.data.pairingId);
+    }
+  }
+}
