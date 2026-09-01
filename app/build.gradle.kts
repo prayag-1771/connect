@@ -1,3 +1,16 @@
+import java.util.Properties
+
+/**
+ * Release signing details, kept out of the repository.
+ *
+ * Without this file the release build still configures, it just goes unsigned
+ * — so a fresh clone is not broken, it simply cannot ship.
+ */
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -21,10 +34,32 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val store = keystoreProperties.getProperty("storeFile")
+            if (store != null) {
+                storeFile = rootProject.file(store)
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
+
+            // Minification is off deliberately. R8 renames and strips, and this
+            // app leans on reflection in places R8 cannot see: Firestore maps
+            // documents onto model classes by field name, and the widgets are
+            // reached only through the manifest. Keep rules cover the cases I
+            // know about, but the failure mode is a silent one — a widget that
+            // does not draw, a document that deserialises to nulls — and none
+            // of that has been tested. Not worth it to save a few megabytes on
+            // an app being handed to one person.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
