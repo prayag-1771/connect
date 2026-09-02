@@ -1,11 +1,14 @@
 package com.obsidian.connect.chat
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,14 +25,19 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,8 +48,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.obsidian.connect.core.model.Message
@@ -55,19 +65,33 @@ fun ChatScreen(
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val messages by viewModel.messages.collectAsStateWithLifecycle()
+    val recording by viewModel.recording.collectAsStateWithLifecycle()
     val myUid = viewModel.myUid
+    val context = LocalContext.current
 
     var draft by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
-    // Marking read here rather than on app launch: opening the camera tab
-    // should not quietly clear the dot for messages nobody has looked at.
     // The system photo picker needs no storage permission at all — it hands
     // back a single grant for exactly what was chosen.
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri -> uri?.let(viewModel::sendPhoto) }
 
+    val micPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) viewModel.startRecording() }
+
+    val player = remember { VoicePlayer(context) }
+    var playingId by remember { mutableStateOf<String?>(null) }
+
+    // Released with the screen, or a note carries on playing after you leave.
+    DisposableEffect(Unit) {
+        onDispose { player.stop() }
+    }
+
+    // Marking read here rather than at app launch: opening the camera tab
+    // should not quietly clear the dot for messages nobody has looked at.
     LaunchedEffect(messages.size) {
         viewModel.markRead()
         viewModel.archiveIncoming(messages)
@@ -85,9 +109,28 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(items = messages, key = { it.id }) { message ->
-                    Bubble(message = message, mine = message.senderId == myUid)
+                    Bubble(
+                        message = message,
+                        mine = message.senderId == myUid,
+                        playing = playingId == message.id,
+                        onTogglePlay = {
+                            message.audioBytes?.let { bytes ->
+                                player.toggle(message.id, bytes) { playingId = null }
+                                playingId = player.currentlyPlaying()
+                            }
+                        },
+                    )
                 }
             }
+        }
+
+        if (recording) {
+            Text(
+                text = "Recording — tap stop to send",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
         }
 
         Row(
@@ -104,6 +147,7 @@ fun ChatScreen(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                     )
                 },
+                enabled = !recording,
             ) {
                 Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = "Send a photo")
             }
@@ -111,27 +155,68 @@ fun ChatScreen(
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
-                placeholder = { Text("Say something") },
+                placeholder = { Text(if (recording) "Recording…" else "Say something") },
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 4,
+                enabled = !recording,
                 modifier = Modifier.weight(1f),
             )
 
-            FilledIconButton(
-                onClick = {
-                    viewModel.send(draft)
-                    draft = ""
-                },
-                enabled = draft.isNotBlank(),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+            // The send button becomes a microphone with nothing typed — one
+            // control, showing whichever thing you are about to do.
+            if (draft.isBlank()) {
+                FilledIconButton(
+                    onClick = {
+                        when {
+                            recording -> viewModel.stopRecordingAndSend()
+
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.RECORD_AUDIO,
+                            ) == PackageManager.PERMISSION_GRANTED -> viewModel.startRecording()
+
+                            else -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                    colors = if (recording) {
+                        IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError,
+                        )
+                    } else {
+                        IconButtonDefaults.filledIconButtonColors()
+                    },
+                ) {
+                    Icon(
+                        imageVector = if (recording) Icons.Filled.Stop else Icons.Filled.Mic,
+                        contentDescription = if (recording) {
+                            "Stop and send"
+                        } else {
+                            "Record a voice note"
+                        },
+                    )
+                }
+            } else {
+                FilledIconButton(
+                    onClick = {
+                        viewModel.send(draft)
+                        draft = ""
+                    },
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                }
             }
         }
     }
 }
 
 @Composable
-private fun Bubble(message: Message, mine: Boolean) {
+private fun Bubble(
+    message: Message,
+    mine: Boolean,
+    playing: Boolean,
+    onTogglePlay: () -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
@@ -176,6 +261,15 @@ private fun Bubble(message: Message, mine: Boolean) {
                 }
             }
 
+            if (message.hasAudio) {
+                VoiceNote(
+                    durationMs = message.audioDurationMs,
+                    playing = playing,
+                    mine = mine,
+                    onToggle = onTogglePlay,
+                )
+            }
+
             if (message.text.isNotBlank()) {
                 Text(
                     text = message.text,
@@ -188,6 +282,7 @@ private fun Bubble(message: Message, mine: Boolean) {
                     modifier = Modifier.padding(top = if (message.hasImage) 6.dp else 0.dp),
                 )
             }
+
             if (message.createdAtMillis > 0) {
                 Text(
                     text = timeFormat.format(Date(message.createdAtMillis)),
@@ -198,6 +293,48 @@ private fun Bubble(message: Message, mine: Boolean) {
             }
         }
     }
+}
+
+/**
+ * A voice note bubble.
+ *
+ * Length comes from the stored duration rather than from decoding the clip, so
+ * a list of notes lays out without touching the audio at all.
+ */
+@Composable
+private fun VoiceNote(
+    durationMs: Long,
+    playing: Boolean,
+    mine: Boolean,
+    onToggle: () -> Unit,
+) {
+    val tint = if (mine) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.clickable(onClick = onToggle),
+    ) {
+        Icon(
+            imageVector = if (playing) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+            contentDescription = if (playing) "Stop" else "Play",
+            tint = tint,
+        )
+        Text(
+            text = formatDuration(durationMs),
+            style = MaterialTheme.typography.bodyMedium,
+            color = tint,
+        )
+    }
+}
+
+private fun formatDuration(millis: Long): String {
+    val total = (millis / 1000).toInt().coerceAtLeast(1)
+    return "%d:%02d".format(total / 60, total % 60)
 }
 
 @Composable

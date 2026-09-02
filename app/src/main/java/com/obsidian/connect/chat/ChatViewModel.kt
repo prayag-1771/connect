@@ -17,8 +17,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -80,6 +82,47 @@ class ChatViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    private val recorder by lazy { VoiceRecorder(context) }
+
+    private val _recording = MutableStateFlow(false)
+    val recording: StateFlow<Boolean> = _recording.asStateFlow()
+
+    fun startRecording(): Boolean {
+        val started = recorder.start()
+        _recording.value = started
+        return started
+    }
+
+    /**
+     * Ends the recording and sends it.
+     *
+     * A clip under about a second is dropped rather than sent — that is almost
+     * always a mis-tap, and a stray blip is more annoying to receive than a
+     * lost recording is to redo.
+     */
+    fun stopRecordingAndSend() {
+        _recording.value = false
+        val clip = recorder.stop() ?: return
+
+        val id = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+
+        viewModelScope.launch {
+            messageRepository.sendAudio(id, uid, clip.bytes, clip.durationMs)
+        }
+    }
+
+    fun cancelRecording() {
+        recorder.cancel()
+        _recording.value = false
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        // A recorder left running holds the microphone open for the whole app.
+        recorder.cancel()
     }
 
     fun send(text: String) {

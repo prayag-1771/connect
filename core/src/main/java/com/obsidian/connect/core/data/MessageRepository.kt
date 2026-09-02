@@ -77,6 +77,37 @@ class MessageRepository @Inject constructor(
     }
 
     /**
+     * Sends a voice note.
+     *
+     * [durationMs] is stored rather than derived on playback, so a bubble can
+     * show its length without every device decoding the clip just to lay out a
+     * list.
+     */
+    suspend fun sendAudio(
+        pairingId: String,
+        senderId: String,
+        audio: ByteArray,
+        durationMs: Long,
+    ): Result<String> = runCatching {
+        check(audio.size <= MAX_IMAGE_BYTES) {
+            "That recording is ${audio.size / 1024}KB, over the ${MAX_IMAGE_BYTES / 1024}KB limit"
+        }
+
+        val doc = messages(pairingId).document()
+        doc.set(
+            mapOf(
+                "senderId" to senderId,
+                "text" to "",
+                "audio" to Blob.fromBytes(audio),
+                "audioDurationMs" to durationMs,
+                "createdAtMillis" to System.currentTimeMillis(),
+                "createdAt" to FieldValue.serverTimestamp(),
+            ),
+        ).await()
+        doc.id
+    }
+
+    /**
      * The newest message the other person sent.
      *
      * Fetches a handful and filters here rather than querying by sender.

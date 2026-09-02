@@ -18,6 +18,16 @@ data class Message(
     val image: com.google.firebase.firestore.Blob? = null,
 
     /**
+     * A voice note, carried the same way.
+     *
+     * Audio suits this far better than video does: a minute of AAC mono at
+     * 32kbps is roughly 240KB, well inside Firestore's 1MiB document limit,
+     * where ten seconds of even modest video would already exceed it.
+     */
+    val audio: com.google.firebase.firestore.Blob? = null,
+    val audioDurationMs: Long = 0L,
+
+    /**
      * Ordering key, set from the sending device's clock.
      *
      * Same reason as [Stroke]: a server timestamp is null on the writing device
@@ -31,5 +41,9 @@ data class Message(
 ) {
     val hasImage: Boolean get() = image != null
 
+    val hasAudio: Boolean get() = audio != null
+
     val bytes: ByteArray? get() = image?.toBytes()
+
+    val audioBytes: ByteArray? get() = audio?.toBytes()
 }
