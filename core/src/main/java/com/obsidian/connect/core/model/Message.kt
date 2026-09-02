@@ -10,6 +10,14 @@ data class Message(
     val text: String = "",
 
     /**
+     * An attached photo, carried in the document like a moment's is.
+     *
+     * Same reasoning and the same ceiling: Cloud Storage needs a paid plan, and
+     * a downscaled JPEG fits inside Firestore's 1MiB document limit.
+     */
+    val image: com.google.firebase.firestore.Blob? = null,
+
+    /**
      * Ordering key, set from the sending device's clock.
      *
      * Same reason as [Stroke]: a server timestamp is null on the writing device
@@ -20,4 +28,8 @@ data class Message(
     val createdAtMillis: Long = 0L,
 
     @ServerTimestamp val createdAt: Date? = null,
-)
+) {
+    val hasImage: Boolean get() = image != null
+
+    val bytes: ByteArray? get() = image?.toBytes()
+}

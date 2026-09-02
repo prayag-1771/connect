@@ -6,6 +6,7 @@ import com.obsidian.connect.core.data.MomentRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.StrokeRepository
 import com.obsidian.connect.core.data.UserRepository
+import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.core.model.Moment
 import com.obsidian.connect.widget.DrawingBubble
 import com.obsidian.connect.widget.MomentWidgetUpdater
@@ -77,6 +78,12 @@ class WidgetLiveUpdater @Inject constructor(
                 if (moment == null || moment.id == syncState.lastMomentId) return@collect
 
                 val bytes = moment.bytes ?: return@collect
+                PhotoArchive.save(
+                    context = context,
+                    jpeg = bytes,
+                    origin = PhotoArchive.Origin.Received,
+                    id = moment.id,
+                )
                 MomentWidgetUpdater.show(
                     context = context,
                     jpeg = bytes,

@@ -38,7 +38,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path as ComposePath
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.drawscope.Stroke as DrawStroke
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -47,6 +52,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.obsidian.connect.camera.CameraCapture
 import com.obsidian.connect.camera.Lens
+import com.obsidian.connect.widget.WatchFaceRenderer
 import kotlinx.coroutines.delay
 
 /**
@@ -98,6 +104,8 @@ fun CaptureScreen(
                 modifier = Modifier.fillMaxSize(),
             )
 
+            WatchFrameGuide(modifier = Modifier.fillMaxSize())
+
             FramingControls(
                 onFlip = { lens = if (lens == Lens.Front) Lens.Back else Lens.Front },
                 onShutter = { captureRequested = true },
@@ -134,6 +142,41 @@ fun CaptureScreen(
                 viewModel.consumeResult()
             }
         }
+    }
+}
+
+/**
+ * Shows the part of the frame that actually reaches the watch face.
+ *
+ * The face centre-crops to a square and then cuts a circle out of it, so most
+ * of what fills this viewfinder is discarded. Without the guide you frame a
+ * shot, send it, and find the subject sliced off at the edges.
+ *
+ * The radius comes from the renderer rather than a matching constant here —
+ * two copies of the same number would drift apart the first time either
+ * changed.
+ */
+@Composable
+private fun WatchFrameGuide(modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        val radius = minOf(size.width, size.height) / 2f * WatchFaceRenderer.DIAL_RATIO
+        val middle = Offset(size.width / 2f, size.height / 2f)
+
+        // A rectangle with the circle punched out of it. Even-odd is what makes
+        // the overlap a hole rather than another filled region.
+        val mask = ComposePath().apply {
+            addRect(Rect(Offset.Zero, size))
+            addOval(Rect(center = middle, radius = radius))
+            fillType = PathFillType.EvenOdd
+        }
+
+        drawPath(path = mask, color = Color.Black.copy(alpha = 0.5f))
+        drawCircle(
+            color = Color.White.copy(alpha = 0.75f),
+            radius = radius,
+            center = middle,
+            style = DrawStroke(width = 2.dp.toPx()),
+        )
     }
 }
 
@@ -202,6 +245,10 @@ private fun ReviewControls(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+
+        // Shown here too: the crop is easier to judge against the photo you
+        // actually took than against a moving viewfinder.
+        WatchFrameGuide(modifier = Modifier.fillMaxSize())
 
         IconButton(
             onClick = onDiscard,

@@ -2,6 +2,7 @@ package com.obsidian.connect.profile
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,12 +13,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.HeartBroken
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -26,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -34,6 +38,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.content.Intent
+import com.obsidian.connect.archive.ArchiveActivity
+import com.obsidian.connect.lock.AppLock
 import com.obsidian.connect.widget.DrawingBubble
 
 /**
@@ -44,6 +51,7 @@ fun ProfileScreen(
     modifier: Modifier = Modifier,
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val myName by viewModel.myName.collectAsStateWithLifecycle()
     val partnerName by viewModel.partnerName.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -75,7 +83,19 @@ fun ProfileScreen(
             }
         }
 
+        OutlinedButton(
+            onClick = { context.startActivity(Intent(context, ArchiveActivity::class.java)) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Outlined.PhotoLibrary, contentDescription = null)
+            Text("  Photos kept on this phone")
+        }
+
+        AppLockCard()
+
         WatchScheduleCard()
+
+        WidgetDisableCard()
 
         DrawingIndicatorCard()
 
@@ -200,6 +220,45 @@ private fun DrawingIndicatorCard() {
                 onClick = { context.startActivity(DrawingBubble.settingsIntent(context)) },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Open settings") }
+        }
+    }
+}
+
+/**
+ * The app lock switch.
+ *
+ * Hidden entirely when the phone has no screen lock or enrolled fingerprint —
+ * there would be nothing to authenticate against, and a switch that silently
+ * never works is worse than no switch.
+ */
+@Composable
+private fun AppLockCard() {
+    val context = LocalContext.current
+    if (!AppLock.isAvailable(context)) return
+
+    var enabled by remember { mutableStateOf(AppLock.isEnabled(context)) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Lock the app", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "Ask for your fingerprint or screen lock every time " +
+                        "Connect is opened.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = {
+                    enabled = it
+                    AppLock.setEnabled(context, it)
+                },
+            )
         }
     }
 }

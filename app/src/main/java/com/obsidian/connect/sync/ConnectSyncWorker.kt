@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.MessageRepository
 import com.obsidian.connect.core.data.MomentRepository
@@ -81,6 +82,12 @@ class ConnectSyncWorker @AssistedInject constructor(
         if (latest.id == syncState.lastMomentId) return
 
         val bytes = latest.bytes ?: return
+        PhotoArchive.save(
+            context = applicationContext,
+            jpeg = bytes,
+            origin = PhotoArchive.Origin.Received,
+            id = latest.id,
+        )
         MomentWidgetUpdater.show(
             context = applicationContext,
             jpeg = bytes,

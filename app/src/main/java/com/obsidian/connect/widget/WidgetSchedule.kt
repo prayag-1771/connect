@@ -19,6 +19,7 @@ object WidgetSchedule {
 
     private const val PREFS = "connect_widget_schedule"
     private const val KEY_ENABLED = "enabled"
+    private const val KEY_DISABLED = "disabled"
     private const val KEY_START = "start_minute"
     private const val KEY_END = "end_minute"
 
@@ -31,6 +32,20 @@ object WidgetSchedule {
 
     /** Off by default: the widget is a photo frame until someone says otherwise. */
     fun isEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_ENABLED, false)
+
+    /**
+     * A manual override that outranks the schedule entirely.
+     *
+     * Separate from the hourly window rather than folded into it, because the
+     * two answer different questions. The window is a standing arrangement;
+     * this is "not right now", and it holds until it is switched back on
+     * rather than until the clock passes some hour.
+     */
+    fun isDisabled(context: Context): Boolean = prefs(context).getBoolean(KEY_DISABLED, false)
+
+    fun setDisabled(context: Context, disabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DISABLED, disabled).apply()
+    }
 
     fun startMinute(context: Context): Int = prefs(context).getInt(KEY_START, DEFAULT_START)
 
@@ -46,6 +61,8 @@ object WidgetSchedule {
 
     /** Whether the face should currently show anything beyond the time. */
     fun isActive(context: Context, nowMinute: Int = currentMinute()): Boolean {
+        // Checked first: a manual switch-off means off, whatever the hours say.
+        if (isDisabled(context)) return false
         if (!isEnabled(context)) return true
         return contains(startMinute(context), endMinute(context), nowMinute)
     }
@@ -70,6 +87,8 @@ object WidgetSchedule {
      * alarm and spin.
      */
     fun minutesUntilNextBoundary(context: Context, nowMinute: Int = currentMinute()): Int {
+        // Nothing to wake for while switched off — only a tap turns it back on.
+        if (isDisabled(context)) return MINUTES_PER_DAY
         if (!isEnabled(context)) return MINUTES_PER_DAY
 
         val start = startMinute(context)

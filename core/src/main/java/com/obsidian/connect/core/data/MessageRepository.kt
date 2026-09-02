@@ -1,5 +1,6 @@
 package com.obsidian.connect.core.data
 
+import com.google.firebase.firestore.Blob
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -47,6 +48,35 @@ class MessageRepository @Inject constructor(
         }
 
     /**
+     * Sends a photo, optionally with a caption alongside it.
+     *
+     * [jpeg] must already be compressed by the caller; an oversized document is
+     * rejected by Firestore with an error that explains nothing useful.
+     */
+    suspend fun sendPhoto(
+        pairingId: String,
+        senderId: String,
+        jpeg: ByteArray,
+        caption: String = "",
+    ): Result<String> = runCatching {
+        check(jpeg.size <= MAX_IMAGE_BYTES) {
+            "That photo is ${jpeg.size / 1024}KB, over the ${MAX_IMAGE_BYTES / 1024}KB limit"
+        }
+
+        val doc = messages(pairingId).document()
+        doc.set(
+            mapOf(
+                "senderId" to senderId,
+                "text" to caption.trim().take(MAX_LENGTH),
+                "image" to Blob.fromBytes(jpeg),
+                "createdAtMillis" to System.currentTimeMillis(),
+                "createdAt" to FieldValue.serverTimestamp(),
+            ),
+        ).await()
+        doc.id
+    }
+
+    /**
      * The newest message the other person sent.
      *
      * Fetches a handful and filters here rather than querying by sender.
@@ -83,6 +113,9 @@ class MessageRepository @Inject constructor(
     private companion object {
         const val PAGE_SIZE = 200L
         const val MAX_LENGTH = 2000
+
+        /** Firestore caps a document at 1MiB; this leaves room for the rest. */
+        const val MAX_IMAGE_BYTES = 700 * 1024
 
         /** Past this the dot is on either way; no point counting further. */
         const val UNREAD_CAP = 50L

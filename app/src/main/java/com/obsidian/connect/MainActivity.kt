@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,15 +17,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.obsidian.connect.auth.AuthScreen
+import com.obsidian.connect.lock.AppLock
+import com.obsidian.connect.lock.LockedScreen
 import com.obsidian.connect.pairing.PairingScreen
 import com.obsidian.connect.ui.theme.ConnectTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     /**
      * Which tab an incoming intent asked for, and a counter beside it.
@@ -37,6 +39,9 @@ class MainActivity : ComponentActivity() {
      */
     private val requestedTab = mutableStateOf<HomeTab?>(null)
     private val requestId = mutableIntStateOf(0)
+
+    /** Cleared on every stop, so returning to the app asks again. */
+    private val unlocked = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,13 +54,43 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    ConnectApp(
-                        requestedTab = requestedTab.value,
-                        requestId = requestId.intValue,
-                    )
+                    if (AppLock.isEnabled(this) && !unlocked.value) {
+                        LockedScreen(onUnlock = ::askToUnlock)
+                    } else {
+                        ConnectApp(
+                            requestedTab = requestedTab.value,
+                            requestId = requestId.intValue,
+                        )
+                    }
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (AppLock.isEnabled(this) && !unlocked.value) askToUnlock()
+    }
+
+    /**
+     * Re-locks whenever the app leaves the screen.
+     *
+     * Locking only at launch would leave the app open behind a recents card
+     * for anyone who picked the phone up, which is the case this exists for.
+     */
+    override fun onStop() {
+        super.onStop()
+        unlocked.value = false
+    }
+
+    private fun askToUnlock() {
+        AppLock.prompt(
+            activity = this,
+            onSuccess = { unlocked.value = true },
+            // Cancelled or locked out. Leaving the app on the lock screen with
+            // its own retry button is better than closing under someone.
+            onFailure = { unlocked.value = false },
+        )
     }
 
     /**

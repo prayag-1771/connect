@@ -1,12 +1,15 @@
 package com.obsidian.connect.send
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.obsidian.connect.camera.ImageCompressor
 import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.MomentRepository
 import com.obsidian.connect.core.data.UserRepository
+import com.obsidian.connect.archive.PhotoArchive
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +27,7 @@ data class SendMomentState(
 
 @HiltViewModel
 class SendMomentViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val authRepository: AuthRepository,
     private val userRepository: UserRepository,
     private val momentRepository: MomentRepository,
@@ -65,7 +69,15 @@ class SendMomentViewModel @Inject constructor(
                 jpeg = compressed,
                 caption = caption.trim(),
             )
-                .onSuccess {
+                .onSuccess { moment ->
+                    // Kept on this phone too. Firestore prunes to the last 30,
+                    // and the sender should not lose their own photos to that.
+                    PhotoArchive.save(
+                        context = context,
+                        jpeg = compressed,
+                        origin = PhotoArchive.Origin.Sent,
+                        id = moment.id,
+                    )
                     _state.update { it.copy(sending = false, sent = true) }
                     // Photos live inside Firestore documents now, and the free
                     // plan caps the whole database at 1GiB. Without this the

@@ -1,5 +1,10 @@
 package com.obsidian.connect.chat
 
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,8 +22,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -30,6 +37,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -52,8 +62,15 @@ fun ChatScreen(
 
     // Marking read here rather than on app launch: opening the camera tab
     // should not quietly clear the dot for messages nobody has looked at.
+    // The system photo picker needs no storage permission at all — it hands
+    // back a single grant for exactly what was chosen.
+    val picker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri -> uri?.let(viewModel::sendPhoto) }
+
     LaunchedEffect(messages.size) {
         viewModel.markRead()
+        viewModel.archiveIncoming(messages)
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
 
@@ -81,6 +98,16 @@ fun ChatScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            IconButton(
+                onClick = {
+                    picker.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    )
+                },
+            ) {
+                Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = "Send a photo")
+            }
+
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
@@ -129,15 +156,38 @@ private fun Bubble(message: Message, mine: Boolean) {
                 )
                 .padding(horizontal = 14.dp, vertical = 9.dp),
         ) {
-            Text(
-                text = message.text,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (mine) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-            )
+            if (message.hasImage) {
+                // Decoded once per message rather than on every recomposition,
+                // which matters in a list that scrolls.
+                val bitmap = remember(message.id) {
+                    message.bytes?.let {
+                        BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap()
+                    }
+                }
+                bitmap?.let {
+                    Image(
+                        bitmap = it,
+                        contentDescription = "Photo",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .widthIn(max = 240.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                    )
+                }
+            }
+
+            if (message.text.isNotBlank()) {
+                Text(
+                    text = message.text,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (mine) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                    modifier = Modifier.padding(top = if (message.hasImage) 6.dp else 0.dp),
+                )
+            }
             if (message.createdAtMillis > 0) {
                 Text(
                     text = timeFormat.format(Date(message.createdAtMillis)),

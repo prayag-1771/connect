@@ -42,7 +42,7 @@ object WatchFaceRenderer {
      *
      * Change one and the other must change with it.
      */
-    private const val DIAL_RATIO = 0.92f
+    const val DIAL_RATIO = 0.92f
 
     /** Unread dot, as a fraction of the face's full width. */
     private const val DOT_RATIO = 0.055f

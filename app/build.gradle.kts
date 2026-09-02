@@ -122,6 +122,11 @@ dependencies {
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.androidx.datastore.preferences)
 
+    // Device biometrics with PIN/pattern/password fallback. Deliberately not a
+    // PIN of our own: storing and verifying one correctly is a security problem
+    // with no upside when the platform already solves it.
+    implementation(libs.androidx.biometric)
+
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
 

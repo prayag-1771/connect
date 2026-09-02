@@ -66,6 +66,12 @@
         </activity>
 
         <activity
+            android:name=".archive.ArchiveActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.Connect" />
+
+        <activity
             android:name=".chat.QuickReplyActivity"
             android:exported="false"
             android:excludeFromRecents="true"
