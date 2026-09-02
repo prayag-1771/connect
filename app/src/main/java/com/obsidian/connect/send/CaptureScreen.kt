@@ -104,7 +104,7 @@ fun CaptureScreen(
                 modifier = Modifier.fillMaxSize(),
             )
 
-            WatchFrameGuide(modifier = Modifier.fillMaxSize())
+            CameraFrameHint(modifier = Modifier.fillMaxSize())
 
             FramingControls(
                 onFlip = { lens = if (lens == Lens.Front) Lens.Back else Lens.Front },
@@ -112,7 +112,7 @@ fun CaptureScreen(
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         } else {
-            ReviewControls(
+            ReviewScreen(
                 jpeg = shot,
                 caption = caption,
                 onCaptionChange = { caption = it },
@@ -121,7 +121,7 @@ fun CaptureScreen(
                     captured = null
                     caption = ""
                 },
-                onSend = { viewModel.send(shot, caption) },
+                onSend = { doodles -> viewModel.send(shot, caption, doodles) },
             )
         }
 
@@ -156,26 +156,24 @@ fun CaptureScreen(
  * two copies of the same number would drift apart the first time either
  * changed.
  */
+/**
+ * A rough indication of the watch crop while framing.
+ *
+ * Approximate on purpose. The preview fills the screen by cropping the sensor
+ * frame, so the viewfinder is not showing the whole photo and no circle drawn
+ * here can be exact. The review screen, which displays the captured photo
+ * whole, is where the real crop is shown.
+ */
 @Composable
-private fun WatchFrameGuide(modifier: Modifier = Modifier) {
+private fun CameraFrameHint(modifier: Modifier = Modifier) {
     androidx.compose.foundation.Canvas(modifier = modifier) {
         val radius = minOf(size.width, size.height) / 2f * WatchFaceRenderer.DIAL_RATIO
-        val middle = Offset(size.width / 2f, size.height / 2f)
-
-        // A rectangle with the circle punched out of it. Even-odd is what makes
-        // the overlap a hole rather than another filled region.
-        val mask = ComposePath().apply {
-            addRect(Rect(Offset.Zero, size))
-            addOval(Rect(center = middle, radius = radius))
-            fillType = PathFillType.EvenOdd
-        }
-
-        drawPath(path = mask, color = Color.Black.copy(alpha = 0.5f))
+        val middle = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
         drawCircle(
-            color = Color.White.copy(alpha = 0.75f),
+            color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.4f),
             radius = radius,
             center = middle,
-            style = DrawStroke(width = 2.dp.toPx()),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()),
         )
     }
 }
@@ -217,91 +215,6 @@ private fun FramingControls(
                 contentDescription = "Switch camera",
                 tint = Color.White,
             )
-        }
-    }
-}
-
-@Composable
-private fun ReviewControls(
-    jpeg: ByteArray,
-    caption: String,
-    onCaptionChange: (String) -> Unit,
-    sending: Boolean,
-    onDiscard: () -> Unit,
-    onSend: () -> Unit,
-) {
-    // Keyed on the array so a new photo decodes, but scrolling and typing do
-    // not re-decode the same JPEG on every recomposition.
-    val bitmap = remember(jpeg) {
-        BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)?.asImageBitmap()
-    }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap,
-                contentDescription = "The photo you just took",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-
-        // Shown here too: the crop is easier to judge against the photo you
-        // actually took than against a moving viewfinder.
-        WatchFrameGuide(modifier = Modifier.fillMaxSize())
-
-        IconButton(
-            onClick = onDiscard,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .statusBarsPadding()
-                .padding(8.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Close,
-                contentDescription = "Discard and retake",
-                tint = Color.White,
-            )
-        }
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(16.dp)
-                .navigationBarsPadding(),
-        ) {
-            OutlinedTextField(
-                value = caption,
-                onValueChange = onCaptionChange,
-                placeholder = { Text("Say something (optional)") },
-                singleLine = true,
-                shape = RoundedCornerShape(28.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            FilledIconButton(
-                onClick = onSend,
-                enabled = !sending,
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .size(64.dp),
-            ) {
-                if (sending) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send to their home screen",
-                    )
-                }
-            }
         }
     }
 }

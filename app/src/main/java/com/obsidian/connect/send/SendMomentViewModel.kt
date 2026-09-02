@@ -36,7 +36,7 @@ class SendMomentViewModel @Inject constructor(
     private val _state = MutableStateFlow(SendMomentState())
     val state: StateFlow<SendMomentState> = _state.asStateFlow()
 
-    fun send(jpeg: ByteArray, caption: String = "") {
+    fun send(jpeg: ByteArray, caption: String = "", doodles: List<DoodleStroke> = emptyList()) {
         val uid = authRepository.currentUid
         if (uid == null) {
             _state.update { it.copy(error = "You're signed out") }
@@ -57,7 +57,12 @@ class SendMomentViewModel @Inject constructor(
             // Decoding and re-encoding a full-resolution photo is heavy enough
             // to drop frames if it runs on the main thread.
             val compressed = withContext(Dispatchers.Default) {
-                runCatching { ImageCompressor.compress(jpeg) }
+                runCatching {
+                    // Doodles are burnt in rather than sent alongside. The photo
+                    // ends up on a widget and in a local archive, neither of
+                    // which knows anything about strokes.
+                    PhotoDoodle.flatten(ImageCompressor.compress(jpeg), doodles)
+                }
             }.getOrElse {
                 _state.update { s -> s.copy(sending = false, error = "Couldn't process that photo") }
                 return@launch
