@@ -174,8 +174,8 @@ fun RemindersScreen(
         EditorTarget.New -> ReminderEditorSheet(
             initial = null,
             onDismiss = { editing = null },
-            onSave = { title, note, dueAt, hasTime, priority ->
-                viewModel.add(title, note, dueAt, hasTime, priority)
+            onSave = { title, note, dueAt, hasTime, priority, contactAlarm ->
+                viewModel.add(title, note, dueAt, hasTime, priority, contactAlarm)
                 editing = null
             },
         )
@@ -183,8 +183,8 @@ fun RemindersScreen(
         is EditorTarget.Existing -> ReminderEditorSheet(
             initial = target.reminder,
             onDismiss = { editing = null },
-            onSave = { title, note, dueAt, hasTime, priority ->
-                viewModel.edit(target.reminder, title, note, dueAt, hasTime, priority)
+            onSave = { title, note, dueAt, hasTime, priority, contactAlarm ->
+                viewModel.edit(target.reminder, title, note, dueAt, hasTime, priority, contactAlarm)
                 editing = null
             },
         )

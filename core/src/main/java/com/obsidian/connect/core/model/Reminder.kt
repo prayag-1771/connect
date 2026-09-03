@@ -49,6 +49,16 @@ data class Reminder(
      * anything having to be renumbered; dragging rewrites it.
      */
     val orderIndex: Long = 0L,
+
+    /**
+     * Rings like an incoming call, on both phones, whoever set it.
+     *
+     * The ordinary alarm is addressed to one person — its owner hears a
+     * ringtone, the other only feels a buzz. This is the opposite: something
+     * neither of you can afford to sleep through, so it uses the phone's call
+     * ringtone and both phones ring in full.
+     */
+    val contactAlarm: Boolean = false,
     val done: Boolean = false,
     val createdBy: String = "",
     val completedBy: String? = null,
@@ -70,6 +80,33 @@ data class Reminder(
      * A date without a time is not late until its day is over — marking
      * "Tuesday" overdue at 00:01 on Tuesday would be wrong and constant.
      */
+    /**
+     * The moment this should ring, or null if it never should.
+     *
+     * Only a reminder with an actual time rings. A date-only item has no
+     * moment to ring at — waking someone at midnight because they wrote
+     * "Tuesday" would be a bug, not a feature.
+     */
+    val alarmAtMillis: Long?
+        get() = dueAt?.time?.takeIf { dueHasTime && !done }
+
+    /**
+     * Due today and still outstanding.
+     *
+     * Drives the warning tint on the row. Deliberately not the same question as
+     * [isOverdue] — this is the day something lands, whether or not the hour
+     * has passed, which is when it is worth catching the eye.
+     */
+    fun isDueToday(now: Date = Date()): Boolean {
+        val due = dueAt ?: return false
+        if (done) return false
+
+        val today = Calendar.getInstance().apply { time = now }
+        val target = Calendar.getInstance().apply { time = due }
+        return today.get(Calendar.YEAR) == target.get(Calendar.YEAR) &&
+            today.get(Calendar.DAY_OF_YEAR) == target.get(Calendar.DAY_OF_YEAR)
+    }
+
     fun isOverdue(now: Date = Date()): Boolean {
         val due = dueAt ?: return false
         if (done) return false

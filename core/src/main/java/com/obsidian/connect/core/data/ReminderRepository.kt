@@ -59,6 +59,7 @@ class ReminderRepository @Inject constructor(
         dueAt: Date? = null,
         dueHasTime: Boolean = false,
         priorityValue: Int = 1,
+        contactAlarm: Boolean = false,
         createdBy: String,
     ): Result<String> = runCatching {
         val doc = collection(scope, ownerId).document()
@@ -70,6 +71,7 @@ class ReminderRepository @Inject constructor(
                 put("createdBy", createdBy)
                 put("priorityValue", priorityValue)
                 put("dueHasTime", dueHasTime)
+                put("contactAlarm", contactAlarm)
                 // Creation time doubles as the initial position, so a new item
                 // lands at the top without renumbering anything below it.
                 put("orderIndex", System.currentTimeMillis())
@@ -107,6 +109,7 @@ class ReminderRepository @Inject constructor(
         dueAt: Date?,
         dueHasTime: Boolean = false,
         priorityValue: Int = 1,
+        contactAlarm: Boolean = false,
     ): Result<Unit> = runCatching {
         collection(scope, ownerId).document(reminderId).update(
             mapOf(
@@ -117,6 +120,7 @@ class ReminderRepository @Inject constructor(
                 "dueAt" to dueAt,
                 "dueHasTime" to dueHasTime,
                 "priorityValue" to priorityValue,
+                "contactAlarm" to contactAlarm,
             ),
         ).await()
     }

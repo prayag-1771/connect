@@ -80,6 +80,7 @@ class RemindersViewModel @Inject constructor(
         dueAt: Date?,
         dueHasTime: Boolean,
         priorityValue: Int,
+        contactAlarm: Boolean,
     ) {
         if (title.isBlank()) return
         withOwner { scope, ownerId, uid ->
@@ -91,6 +92,7 @@ class RemindersViewModel @Inject constructor(
                 dueAt = dueAt,
                 dueHasTime = dueHasTime,
                 priorityValue = priorityValue,
+                contactAlarm = contactAlarm,
                 createdBy = uid,
             )
         }
@@ -122,6 +124,7 @@ class RemindersViewModel @Inject constructor(
         dueAt: Date?,
         dueHasTime: Boolean,
         priorityValue: Int,
+        contactAlarm: Boolean,
     ) {
         withOwner { scope, ownerId, _ ->
             reminderRepository.edit(
@@ -133,6 +136,7 @@ class RemindersViewModel @Inject constructor(
                 dueAt = dueAt,
                 dueHasTime = dueHasTime,
                 priorityValue = priorityValue,
+                contactAlarm = contactAlarm,
             )
         }
     }

@@ -48,6 +48,7 @@ fun ReminderRow(
     dragHandle: (@Composable () -> Unit)? = null,
 ) {
     val overdue = reminder.isOverdue()
+    val dueToday = reminder.isDueToday()
 
     // Animated so ticking something off reads as a state change rather than a
     // sudden repaint.
@@ -60,10 +61,19 @@ fun ReminderRow(
         label = "titleColor",
     )
 
+    // A light red wash on the day something is due, so today's deadlines
+    // separate themselves from the list without needing to be read. Kept pale
+    // deliberately — a row that shouts is no use in a list where several rows
+    // might be shouting at once.
+    val background by animateColorAsState(
+        targetValue = if (dueToday) DUE_TODAY else MaterialTheme.colorScheme.surfaceContainerLow,
+        label = "rowBackground",
+    )
+
     Surface(
         modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = background,
     ) {
         Row(
             modifier = Modifier.padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
@@ -174,3 +184,6 @@ private fun priorityColour(priority: Priority, done: Boolean): Color = when {
     priority == Priority.Medium -> Color(0xFFE0A030)
     else -> Color(0xFF5B9BD5)
 }
+
+/** Pale enough to sit under text, red enough to mean today. */
+private val DUE_TODAY = Color(0xFF3A2224)

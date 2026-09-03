@@ -27,6 +27,7 @@ import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -54,7 +55,14 @@ import java.util.Date
 fun ReminderEditorSheet(
     initial: Reminder?,
     onDismiss: () -> Unit,
-    onSave: (title: String, note: String, dueAt: Date?, hasTime: Boolean, priority: Int) -> Unit,
+    onSave: (
+        title: String,
+        note: String,
+        dueAt: Date?,
+        hasTime: Boolean,
+        priority: Int,
+        contactAlarm: Boolean,
+    ) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -63,6 +71,7 @@ fun ReminderEditorSheet(
     var dueAt by remember { mutableStateOf(initial?.dueAt) }
     var hasTime by remember { mutableStateOf(initial?.dueHasTime ?: false) }
     var priority by remember { mutableIntStateOf(initial?.priorityValue ?: 1) }
+    var contactAlarm by remember { mutableStateOf(initial?.contactAlarm ?: false) }
     var pickingDate by remember { mutableStateOf(false) }
     var pickingTime by remember { mutableStateOf(false) }
 
@@ -156,10 +165,20 @@ fun ReminderEditorSheet(
 
             PriorityRow(selected = priority, onSelect = { priority = it })
 
+            // Only offered once there is a time to ring at. A switch that
+            // silently does nothing because the reminder has no deadline is
+            // worse than one that is not there.
+            if (hasTime) {
+                ContactAlarmRow(
+                    enabled = contactAlarm,
+                    onChange = { contactAlarm = it },
+                )
+            }
+
             Spacer(Modifier.height(4.dp))
 
             Button(
-                onClick = { onSave(title, note, dueAt, hasTime, priority) },
+                onClick = { onSave(title, note, dueAt, hasTime, priority, contactAlarm && hasTime) },
                 enabled = title.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -271,4 +290,29 @@ private fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier {
         indication = null,
         onClick = onClick,
     )
+}
+
+/**
+ * The switch that turns a reminder into something neither of you can ignore.
+ *
+ * Off, an alarm is addressed to whoever set it: they hear a ringtone, the
+ * other person feels a buzz and sees the ripples. On, it rings in full on both
+ * phones with the call ringtone, whoever wrote it.
+ */
+@Composable
+private fun ContactAlarmRow(enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "Ring like a call", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = "Both phones ring, whoever set it",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = enabled, onCheckedChange = onChange)
+    }
 }

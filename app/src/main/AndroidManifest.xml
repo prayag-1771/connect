@@ -47,6 +47,9 @@
       inexact one if it is refused.
     -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- The other person feels a reminder they are not meant to be woken by. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- The floating blue indicator. Granted by the user in Settings, not at runtime. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
@@ -150,6 +153,10 @@
 
         <receiver
             android:name=".sync.FastSyncReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".alarm.ReminderAlarmReceiver"
             android:exported="false" />
 
         <receiver

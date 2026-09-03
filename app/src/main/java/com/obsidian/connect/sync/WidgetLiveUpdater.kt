@@ -5,10 +5,13 @@ import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.MessageRepository
 import com.obsidian.connect.core.data.MomentRepository
 import com.obsidian.connect.core.data.PairingRepository
+import com.obsidian.connect.core.data.ReminderRepository
 import com.obsidian.connect.core.data.StrokeRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.archive.PhotoArchive
+import com.obsidian.connect.alarm.ReminderAlarmScheduler
 import com.obsidian.connect.core.model.Moment
+import com.obsidian.connect.core.model.ReminderScope
 import com.obsidian.connect.widget.DrawingBubble
 import com.obsidian.connect.widget.MomentWidgetUpdater
 import com.obsidian.connect.widget.WatchWidgetProvider
@@ -44,6 +47,7 @@ class WidgetLiveUpdater @Inject constructor(
     private val momentRepository: MomentRepository,
     private val messageRepository: MessageRepository,
     private val strokeRepository: StrokeRepository,
+    private val reminderRepository: ReminderRepository,
     private val syncState: SyncState,
 ) {
 
@@ -98,6 +102,43 @@ class WidgetLiveUpdater @Inject constructor(
                 // widget, the copy in Firestore is erased.
                 if (saved.exists()) momentRepository.clearImage(moment.id)
             }
+    }
+
+    /**
+     * Keeps the phone's alarm clock in step with both reminder lists.
+     *
+     * Watched rather than set at the moment of writing, because a shared
+     * deadline can be added or retimed from the *other* phone — and that phone
+     * cannot reach into this one's AlarmManager. Each device schedules from
+     * its own copy, which is also what lets a deadline ring hours later with
+     * the app long since closed.
+     */
+    suspend fun watchReminderAlarms() {
+        authRepository.uidFlow
+            .flatMapLatest { uid ->
+                if (uid == null) {
+                    flowOf(emptyList())
+                } else {
+                    // Both lists feed one schedule. A private deadline rings
+                    // exactly like a shared one; the only difference is that
+                    // nobody else is holding a copy of it.
+                    userRepository.observe(uid)
+                        .map { it?.pairingId }
+                        .distinctUntilChanged()
+                        .flatMapLatest { pairingId ->
+                            val private = reminderRepository.observe(ReminderScope.Private, uid)
+                            if (pairingId == null) {
+                                private
+                            } else {
+                                combine(
+                                    private,
+                                    reminderRepository.observe(ReminderScope.Shared, pairingId),
+                                ) { mine, ours -> mine + ours }
+                            }
+                        }
+                }
+            }
+            .collect { reminders -> ReminderAlarmScheduler.sync(context, reminders) }
     }
 
     /**
