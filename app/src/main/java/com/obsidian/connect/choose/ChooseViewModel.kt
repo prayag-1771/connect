@@ -62,7 +62,14 @@ class ChooseViewModel @Inject constructor(
             val compressed = withContext(Dispatchers.IO) {
                 runCatching {
                     context.contentResolver.openInputStream(uri).use { it?.readBytes() }
-                        ?.let { ImageCompressor.compress(it) }
+                        ?.let {
+                            // Judged on screen, never rendered by a widget, so
+                            // the 720 widget cap would only throw away detail.
+                            ImageCompressor.compress(
+                                source = it,
+                                longEdge = ImageCompressor.DETAIL_LONG_EDGE,
+                            )
+                        }
                 }.getOrNull()
             }
 

@@ -18,13 +18,25 @@ import java.io.InputStream
 object ImageCompressor {
 
     /**
-     * Long edge of the stored image.
+     * Long edge for photos bound for a widget.
      *
-     * 720 rather than something larger because the photo now travels inside a
-     * Firestore document, and a widget never renders more than this anyway —
-     * Glance caps its bitmaps well below it.
+     * 720 because a widget never renders more than this — Glance caps its
+     * bitmaps well below it — and every pixel past that is thrown away.
      */
     const val TARGET_LONG_EDGE = 720
+
+    /**
+     * Long edge for photos that are only ever looked at on screen.
+     *
+     * Chat pictures and choice cards do not go near a widget, so the 720 cap
+     * exists for them only as an accident of sharing this code. At that size
+     * anything with fine detail — a screenshot, a label, a price tag — comes
+     * out soft, which is exactly the sort of thing people put up to be judged.
+     *
+     * The ceiling is still Firestore's 1MiB document, and the encoder below
+     * steps down until it fits, so this is an upper bound rather than a promise.
+     */
+    const val DETAIL_LONG_EDGE = 1600
 
     private const val QUALITY = 82
 

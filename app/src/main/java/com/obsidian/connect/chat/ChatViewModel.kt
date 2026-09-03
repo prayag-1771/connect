@@ -75,7 +75,12 @@ class ChatViewModel @Inject constructor(
             val compressed = withContext(Dispatchers.IO) {
                 runCatching {
                     context.contentResolver.openInputStream(uri).use { it?.readBytes() }
-                        ?.let { ImageCompressor.compress(it) }
+                        ?.let {
+                            ImageCompressor.compress(
+                                source = it,
+                                longEdge = ImageCompressor.DETAIL_LONG_EDGE,
+                            )
+                        }
                 }.getOrNull()
             } ?: return@launch
 
@@ -190,7 +195,15 @@ class ChatViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 runCatching {
                     context.contentResolver.openInputStream(uri).use { it?.readBytes() }
-                        ?.let { StickerStore.save(context, ImageCompressor.compress(it)) }
+                        ?.let {
+                            StickerStore.save(
+                                context,
+                                ImageCompressor.compress(
+                                    source = it,
+                                    longEdge = ImageCompressor.DETAIL_LONG_EDGE,
+                                ),
+                            )
+                        }
                 }
             }
             refreshSaved()

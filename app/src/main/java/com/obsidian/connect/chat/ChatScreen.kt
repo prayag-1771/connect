@@ -343,7 +343,10 @@ fun ChatScreen(
     }
 
         if (chooseOpen) {
-            ChooseOverlay(onDismiss = { chooseOpen = false })
+            ChooseOverlay(
+                onDismiss = { chooseOpen = false },
+                bottomInset = barBottom,
+            )
         }
     }
 }

@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -72,6 +73,7 @@ import kotlin.math.absoluteValue
 @Composable
 fun ChooseOverlay(
     onDismiss: () -> Unit,
+    bottomInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
     viewModel: ChooseViewModel = hiltViewModel(),
 ) {
@@ -98,7 +100,14 @@ fun ChooseOverlay(
             .background(Color.Black.copy(alpha = 0.45f)),
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().statusBarsPadding(),
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                // This overlay sits beside the chat column rather than inside
+                // it, so it covers the whole screen — including the strip the
+                // bottom navigation bar draws over. Without this the like and
+                // dislike buttons are clipped by it.
+                .padding(bottom = bottomInset),
         ) {
             Header(onClose = onDismiss)
 
@@ -251,7 +260,11 @@ private fun ChoiceCard(
                         Image(
                             bitmap = it,
                             contentDescription = choice.note.ifBlank { "An option" },
-                            contentScale = ContentScale.Crop,
+                            // Fit, not Crop. You are being asked to judge the
+                            // thing in the photo; cropping its edges away to
+                            // fill the card can remove the part being decided
+                            // about.
+                            contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
