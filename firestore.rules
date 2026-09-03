@@ -163,6 +163,13 @@ service cloud.firestore {
         allow read, write: if isMember(pairingId);
       }
 
+      // A timetable each. Both people read both; only the owner writes their
+      // own - seeing somebody's week and rewriting it are different things.
+      match /timetables/{userId} {
+        allow read: if isMember(pairingId);
+        allow write: if isMember(pairingId) && uid() == userId;
+      }
+
       match /strokes/{strokeId} {
         allow read: if isMember(pairingId);
         allow create: if isMember(pairingId)

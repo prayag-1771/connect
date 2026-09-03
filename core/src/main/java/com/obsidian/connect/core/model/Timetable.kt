@@ -1,0 +1,48 @@
+package com.obsidian.connect.core.model
+
+import com.google.firebase.firestore.DocumentId
+
+/**
+ * One thing that happens at a set time on a set day.
+ *
+ * Times are strings rather than numbers because that is what a timetable
+ * photograph actually contains, and converting them would mean deciding what
+ * "9-10" means on a page that never said am or pm. Sorting is done on the
+ * string, which is correct as long as they are zero-padded - which is what the
+ * extraction is told to produce.
+ */
+data class TimetableEntry(
+    /** Full English day name, so it can be matched without a lookup table. */
+    val day: String = "",
+    val start: String = "",
+    val end: String = "",
+    val title: String = "",
+    val location: String = "",
+) {
+    val isUsable: Boolean get() = day.isNotBlank() && title.isNotBlank()
+}
+
+/**
+ * Somebody's week, read off a photograph.
+ *
+ * One per person rather than one shared, because two people have two
+ * timetables - the point of showing them together is seeing where they differ.
+ */
+data class Timetable(
+    @DocumentId val uid: String = "",
+    val entries: List<TimetableEntry> = emptyList(),
+    val updatedAtMillis: Long = 0L,
+) {
+    val isEmpty: Boolean get() = entries.isEmpty()
+
+    fun entriesOn(day: String): List<TimetableEntry> =
+        entries.filter { it.day.equals(day, ignoreCase = true) }.sortedBy { it.start }
+
+    companion object {
+        /** Monday first, because that is how a week is read. */
+        val DAYS = listOf(
+            "Monday", "Tuesday", "Wednesday",
+            "Thursday", "Friday", "Saturday", "Sunday",
+        )
+    }
+}

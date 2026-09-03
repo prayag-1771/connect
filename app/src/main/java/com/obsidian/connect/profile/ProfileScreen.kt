@@ -2,6 +2,8 @@ package com.obsidian.connect.profile
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import com.obsidian.connect.timetable.TimetableActivity
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.outlined.Settings
 import com.obsidian.connect.starred.StarredActivity
@@ -110,6 +112,14 @@ fun ProfileScreen(
         ) {
             Icon(Icons.Outlined.PhotoLibrary, contentDescription = null)
             Text("  Photos kept on this phone")
+        }
+
+        OutlinedButton(
+            onClick = { TimetableActivity.open(context) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Outlined.CalendarMonth, contentDescription = null)
+            Text("  Timetable")
         }
 
         AppearanceCard(

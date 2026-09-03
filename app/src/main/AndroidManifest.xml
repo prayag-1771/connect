@@ -219,6 +219,11 @@
             android:label="Jam" />
 
         <activity
+            android:name=".timetable.TimetableActivity"
+            android:exported="false"
+            android:label="Timetable" />
+
+        <activity
             android:name=".profile.SettingsActivity"
             android:exported="false"
             android:label="Settings" />

@@ -46,6 +46,11 @@ android {
             "YOUTUBE_KEY",
             "\"${keystoreProperties.getProperty("youtubeKey") ?: ""}\"",
         )
+        buildConfigField(
+            "String",
+            "GEMINI_KEY",
+            "\"${keystoreProperties.getProperty("geminiKey") ?: ""}\"",
+        )
     }
 
     signingConfigs {
