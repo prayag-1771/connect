@@ -108,6 +108,30 @@ class MessageRepository @Inject constructor(
     }
 
     /**
+     * Sends a GIF as a link.
+     *
+     * No size check, because nothing is being stored — the URL is a couple of
+     * hundred bytes whatever the GIF weighs.
+     */
+    suspend fun sendGif(
+        pairingId: String,
+        senderId: String,
+        gifUrl: String,
+    ): Result<String> = runCatching {
+        val doc = messages(pairingId).document()
+        doc.set(
+            mapOf(
+                "senderId" to senderId,
+                "text" to "",
+                "gifUrl" to gifUrl,
+                "createdAtMillis" to System.currentTimeMillis(),
+                "createdAt" to FieldValue.serverTimestamp(),
+            ),
+        ).await()
+        doc.id
+    }
+
+    /**
      * The newest message the other person sent.
      *
      * Fetches a handful and filters here rather than querying by sender.

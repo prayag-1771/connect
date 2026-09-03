@@ -32,6 +32,15 @@ android {
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Read from a gitignored properties file. Absent, GIF search is simply
+        // switched off rather than the build breaking — a fresh clone still
+        // compiles and runs.
+        buildConfigField(
+            "String",
+            "GIPHY_KEY",
+            "\"${keystoreProperties.getProperty("giphyKey") ?: ""}\"",
+        )
     }
 
     signingConfigs {
@@ -84,6 +93,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
@@ -154,6 +164,7 @@ dependencies {
     compileOnly(libs.guava)
 
     implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

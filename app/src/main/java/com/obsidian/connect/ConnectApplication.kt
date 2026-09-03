@@ -1,8 +1,13 @@
 package com.obsidian.connect
 
 import android.app.Application
+import android.os.Build
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
 import com.obsidian.connect.messaging.Notifications
 import com.obsidian.connect.sync.SyncScheduler
 import com.obsidian.connect.widget.DrawingBubble
@@ -17,7 +22,22 @@ import javax.inject.Inject
  * is removed in the manifest to stop the two from racing.
  */
 @HiltAndroidApp
-class ConnectApplication : Application(), Configuration.Provider {
+class ConnectApplication : Application(), Configuration.Provider, ImageLoaderFactory {
+
+    /**
+     * Coil renders a GIF as a still first frame unless a decoder is registered.
+     * The decoder differs by API level — ImageDecoder exists from 28.
+     */
+    override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
+        .components {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                add(ImageDecoderDecoder.Factory())
+            } else {
+                add(GifDecoder.Factory())
+            }
+        }
+        .build()
+
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
 

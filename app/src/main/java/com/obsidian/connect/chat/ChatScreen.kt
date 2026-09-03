@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.obsidian.connect.core.model.Message
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -82,6 +84,28 @@ fun ChatScreen(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> if (granted) viewModel.startRecording() }
 
+    val gifs by viewModel.gifs.collectAsStateWithLifecycle()
+    val gifsLoading by viewModel.gifsLoading.collectAsStateWithLifecycle()
+    val saved by viewModel.saved.collectAsStateWithLifecycle()
+
+    var panelOpen by remember { mutableStateOf(false) }
+    var panelTab by remember { mutableStateOf(AttachmentTab.Gifs) }
+    var gifQuery by remember { mutableStateOf("") }
+
+    // Adds to the saved collection rather than sending, which is the whole
+    // point of it being a separate store.
+    val stickerPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri -> uri?.let(viewModel::saveSticker) }
+
+    LaunchedEffect(panelOpen, panelTab) {
+        if (!panelOpen) return@LaunchedEffect
+        when (panelTab) {
+            AttachmentTab.Gifs -> if (gifs.isEmpty()) viewModel.searchGifs("")
+            AttachmentTab.Saved -> viewModel.refreshSaved()
+        }
+    }
+
     val player = remember { VoicePlayer(context) }
     var playingId by remember { mutableStateOf<String?>(null) }
 
@@ -90,12 +114,27 @@ fun ChatScreen(
         onDispose { player.stop() }
     }
 
+    // Whether the list has been positioned at least once.
+    var positioned by remember { mutableStateOf(false) }
+
     // Marking read here rather than at app launch: opening the camera tab
     // should not quietly clear the dot for messages nobody has looked at.
     LaunchedEffect(messages.size) {
         viewModel.markRead()
         viewModel.archiveIncoming(messages)
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+        if (messages.isEmpty()) return@LaunchedEffect
+
+        if (positioned) {
+            // A message arrived while you were looking; sliding to it shows
+            // that something moved.
+            listState.animateScrollToItem(messages.lastIndex)
+        } else {
+            // Opening the tab should simply start at the bottom. Animating
+            // here scrolls the whole history past you first, which reads as
+            // the screen running away.
+            listState.scrollToItem(messages.lastIndex)
+            positioned = true
+        }
     }
 
     Column(modifier = modifier.fillMaxSize().imePadding()) {
@@ -124,6 +163,34 @@ fun ChatScreen(
             }
         }
 
+        if (panelOpen) {
+            AttachmentPanel(
+                tab = panelTab,
+                onTab = { panelTab = it },
+                gifs = gifs,
+                gifsLoading = gifsLoading,
+                gifQuery = gifQuery,
+                onGifQuery = {
+                    gifQuery = it
+                    viewModel.searchGifs(it)
+                },
+                onSendGif = {
+                    viewModel.sendGif(it)
+                    panelOpen = false
+                },
+                saved = saved,
+                onSendSaved = {
+                    viewModel.sendSaved(it)
+                    panelOpen = false
+                },
+                onAddSaved = {
+                    stickerPicker.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    )
+                },
+            )
+        }
+
         if (recording) {
             Text(
                 text = "Recording — tap stop to send",
@@ -150,6 +217,21 @@ fun ChatScreen(
                 enabled = !recording,
             ) {
                 Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = "Send a photo")
+            }
+
+            IconButton(
+                onClick = { panelOpen = !panelOpen },
+                enabled = !recording,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.EmojiEmotions,
+                    contentDescription = if (panelOpen) "Close" else "GIFs and saved images",
+                    tint = if (panelOpen) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
             }
 
             OutlinedTextField(
@@ -259,6 +341,17 @@ private fun Bubble(
                             .clip(RoundedCornerShape(12.dp)),
                     )
                 }
+            }
+
+            if (message.hasGif) {
+                AsyncImage(
+                    model = message.gifUrl,
+                    contentDescription = "GIF",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .widthIn(max = 220.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                )
             }
 
             if (message.hasAudio) {

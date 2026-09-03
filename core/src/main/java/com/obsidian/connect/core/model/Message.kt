@@ -28,6 +28,15 @@ data class Message(
     val audioDurationMs: Long = 0L,
 
     /**
+     * A GIF, stored as a link rather than as data.
+     *
+     * GIFs run to megabytes, well past the 1MiB document limit, so the bytes
+     * stay on the CDN they came from. The cost is that displaying one needs a
+     * connection, unlike everything else here.
+     */
+    val gifUrl: String = "",
+
+    /**
      * Ordering key, set from the sending device's clock.
      *
      * Same reason as [Stroke]: a server timestamp is null on the writing device
@@ -42,6 +51,8 @@ data class Message(
     val hasImage: Boolean get() = image != null
 
     val hasAudio: Boolean get() = audio != null
+
+    val hasGif: Boolean get() = gifUrl.isNotBlank()
 
     val bytes: ByteArray? get() = image?.toBytes()
 

@@ -16,6 +16,8 @@ import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -81,6 +83,72 @@ class ChatViewModel @Inject constructor(
                     id = messageId,
                 )
             }
+        }
+    }
+
+    private val _gifs = MutableStateFlow<List<GifSearch.Gif>>(emptyList())
+    val gifs: StateFlow<List<GifSearch.Gif>> = _gifs.asStateFlow()
+
+    private val _gifsLoading = MutableStateFlow(false)
+    val gifsLoading: StateFlow<Boolean> = _gifsLoading.asStateFlow()
+
+    private val _saved = MutableStateFlow<List<java.io.File>>(emptyList())
+    val saved: StateFlow<List<java.io.File>> = _saved.asStateFlow()
+
+    private var gifSearchJob: Job? = null
+
+    fun refreshSaved() {
+        _saved.value = StickerStore.list(context)
+    }
+
+    /**
+     * Searches GIFs, cancelling whatever was already in flight.
+     *
+     * Typing produces a request per keystroke otherwise, and results arriving
+     * out of order would leave the grid showing an earlier query.
+     */
+    fun searchGifs(term: String) {
+        gifSearchJob?.cancel()
+        gifSearchJob = viewModelScope.launch {
+            _gifsLoading.value = true
+            delay(GIF_DEBOUNCE_MS)
+            _gifs.value = if (term.isBlank()) GifSearch.trending() else GifSearch.search(term)
+            _gifsLoading.value = false
+        }
+    }
+
+    fun sendGif(gif: GifSearch.Gif) {
+        val id = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+        viewModelScope.launch { messageRepository.sendGif(id, uid, gif.sendUrl) }
+    }
+
+    /** Sends something already in the saved collection. */
+    fun sendSaved(file: java.io.File) {
+        val id = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+
+        viewModelScope.launch {
+            val bytes = withContext(Dispatchers.IO) {
+                runCatching { file.readBytes() }.getOrNull()
+            } ?: return@launch
+
+            messageRepository.sendPhoto(id, uid, bytes).onSuccess { messageId ->
+                PhotoArchive.save(context, bytes, PhotoArchive.Origin.Sent, messageId)
+            }
+        }
+    }
+
+    /** Adds an image to the saved collection without sending it. */
+    fun saveSticker(uri: Uri) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri).use { it?.readBytes() }
+                        ?.let { StickerStore.save(context, ImageCompressor.compress(it)) }
+                }
+            }
+            refreshSaved()
         }
     }
 
@@ -180,5 +248,8 @@ class ChatViewModel @Inject constructor(
 
     private companion object {
         const val STOP_TIMEOUT = 5_000L
+
+        /** Long enough that typing does not fire a request per keystroke. */
+        const val GIF_DEBOUNCE_MS = 350L
     }
 }
