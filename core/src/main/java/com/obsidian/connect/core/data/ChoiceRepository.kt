@@ -6,6 +6,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.obsidian.connect.core.FirestorePaths
 import com.obsidian.connect.core.model.Choice
+import com.obsidian.connect.core.model.ChoiceRef
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -74,6 +75,31 @@ class ChoiceRepository @Inject constructor(
             mapOf(
                 "verdict" to verdict,
                 "verdictBy" to if (verdict == 0) "" else uid,
+            ),
+        ).await()
+    }
+
+    /**
+     * Records that this card was talked about.
+     *
+     * Appended with arrayUnion rather than read-modify-write: both of you can
+     * be replying to the same card at once, and rewriting the whole list would
+     * let one reply quietly erase the other.
+     */
+    suspend fun addRef(
+        pairingId: String,
+        choiceId: String,
+        ref: ChoiceRef,
+    ): Result<Unit> = runCatching {
+        choices(pairingId).document(choiceId).update(
+            "refs",
+            FieldValue.arrayUnion(
+                mapOf(
+                    "messageId" to ref.messageId,
+                    "byUid" to ref.byUid,
+                    "text" to ref.text,
+                    "atMillis" to ref.atMillis,
+                ),
             ),
         ).await()
     }

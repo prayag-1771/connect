@@ -52,20 +52,50 @@ class MessageRepository @Inject constructor(
             .limit(limit)
             .asFlow()
 
-    suspend fun send(pairingId: String, senderId: String, text: String): Result<Unit> =
-        runCatching {
-            val trimmed = text.trim()
-            if (trimmed.isEmpty()) return@runCatching
+    /**
+     * [replyTo] quotes another message; [choiceRefId] ties this to a card from
+     * the choose deck. Both are optional and independent - a reply started
+     * from a card carries the card, an answer in the conversation carries the
+     * message, and neither knows about the other.
+     */
+    suspend fun send(
+        pairingId: String,
+        senderId: String,
+        text: String,
+        replyTo: Message? = null,
+        choiceRefId: String = "",
+    ): Result<String> = runCatching {
+        val trimmed = text.trim()
+        check(trimmed.isNotEmpty()) { "Nothing to send" }
 
-            messages(pairingId).add(
-                mapOf(
-                    "senderId" to senderId,
-                    "text" to trimmed.take(MAX_LENGTH),
-                    "createdAtMillis" to System.currentTimeMillis(),
-                    "createdAt" to FieldValue.serverTimestamp(),
-                ),
-            ).await()
-        }
+        val doc = messages(pairingId).document()
+        doc.set(
+            buildMap {
+                put("senderId", senderId)
+                put("text", trimmed.take(MAX_LENGTH))
+                put("createdAtMillis", System.currentTimeMillis())
+                put("createdAt", FieldValue.serverTimestamp())
+                putReply(replyTo)
+                if (choiceRefId.isNotBlank()) put("choiceRefId", choiceRefId)
+            },
+        ).await()
+        doc.id
+    }
+
+    /**
+     * Copies what a quote needs to render itself.
+     *
+     * A snapshot, not a pointer: the original may already have scrolled out of
+     * the loaded window, or been deleted outright, and a quote that cannot
+     * show what it quotes is worse than no quote.
+     */
+    private fun MutableMap<String, Any>.putReply(replyTo: Message?) {
+        val target = replyTo ?: return
+        put("replyToId", target.id)
+        put("replyToText", target.quotedSummary.take(QUOTE_LENGTH))
+        put("replyToSender", target.senderId)
+        put("replyToIsPhoto", target.isPhoto)
+    }
 
     /**
      * Sends a photo, optionally with a caption alongside it.
@@ -78,6 +108,7 @@ class MessageRepository @Inject constructor(
         senderId: String,
         jpeg: ByteArray,
         caption: String = "",
+        replyTo: Message? = null,
     ): Result<String> = runCatching {
         check(jpeg.size <= MAX_IMAGE_BYTES) {
             "That photo is ${jpeg.size / 1024}KB, over the ${MAX_IMAGE_BYTES / 1024}KB limit"
@@ -85,15 +116,16 @@ class MessageRepository @Inject constructor(
 
         val doc = messages(pairingId).document()
         doc.set(
-            mapOf(
-                "senderId" to senderId,
-                "text" to caption.trim().take(MAX_LENGTH),
-                "image" to Blob.fromBytes(jpeg),
+            buildMap {
+                put("senderId", senderId)
+                put("text", caption.trim().take(MAX_LENGTH))
+                put("image", Blob.fromBytes(jpeg))
                 // Outlives the bytes, which are erased once delivered.
-                "photo" to true,
-                "createdAtMillis" to System.currentTimeMillis(),
-                "createdAt" to FieldValue.serverTimestamp(),
-            ),
+                put("photo", true)
+                put("createdAtMillis", System.currentTimeMillis())
+                put("createdAt", FieldValue.serverTimestamp())
+                putReply(replyTo)
+            },
         ).await()
         doc.id
     }
@@ -289,6 +321,9 @@ class MessageRepository @Inject constructor(
     private companion object {
         const val PAGE_SIZE = 200L
         const val MAX_LENGTH = 2000
+
+        /** A quote is a reminder of what was said, not a second copy of it. */
+        const val QUOTE_LENGTH = 140
 
         /** Firestore caps a document at 1MiB; this leaves room for the rest. */
         const val MAX_IMAGE_BYTES = 900 * 1024

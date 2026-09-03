@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.AlertDialog
@@ -68,6 +71,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.obsidian.connect.core.model.Choice
+import com.obsidian.connect.core.model.ChoiceRef
 import com.obsidian.connect.editor.EditPhotoContract
 import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.viewer.PhotoViewerActivity
@@ -85,6 +89,10 @@ import kotlin.math.absoluteValue
 @Composable
 fun ChooseOverlay(
     onDismiss: () -> Unit,
+    /** Start a reply in the chat about this card. */
+    onRefer: (Choice) -> Unit = {},
+    /** Jump back to a message that was written about a card. */
+    onOpenRef: (ChoiceRef) -> Unit = {},
     bottomInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
     viewModel: ChooseViewModel = hiltViewModel(),
@@ -200,6 +208,17 @@ fun ChooseOverlay(
                 allowAdding = side == ChoiceSide.Mine,
                 onJudge = viewModel::judge,
                 onDelete = { confirmingDelete = it },
+                // Both close the deck: one to write about a card, the other to
+                // go and read what was written. Either way the answer is in
+                // the conversation, not here.
+                onRefer = {
+                    onRefer(it)
+                    onDismiss()
+                },
+                onOpenRef = {
+                    onOpenRef(it)
+                    onDismiss()
+                },
                 onPickFromGallery = {
                     picker.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
@@ -316,6 +335,8 @@ private fun Deck(
     allowAdding: Boolean,
     onJudge: (Choice, Int) -> Unit,
     onDelete: (Choice) -> Unit,
+    onRefer: (Choice) -> Unit,
+    onOpenRef: (ChoiceRef) -> Unit,
     onPickFromGallery: () -> Unit,
     onTakePhoto: () -> Unit,
     modifier: Modifier = Modifier,
@@ -357,6 +378,8 @@ private fun Deck(
                     myUid = myUid,
                     onJudge = onJudge,
                     onDelete = onDelete,
+                    onRefer = onRefer,
+                    onOpenRef = onOpenRef,
                     modifier = Modifier.scale(scale),
                 )
             }
@@ -392,6 +415,8 @@ private fun ChoiceCard(
     myUid: String?,
     onJudge: (Choice, Int) -> Unit,
     onDelete: (Choice) -> Unit,
+    onRefer: (Choice) -> Unit,
+    onOpenRef: (ChoiceRef) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize().padding(vertical = 12.dp)) {
@@ -449,6 +474,11 @@ private fun ChoiceCard(
                     )
                 }
 
+                // Everything ever said about this card, kept with the card.
+                // A decision is rarely made in one go, and the argument for it
+                // is worth as much as the verdict.
+                RefStrip(refs = choice.refs, onOpenRef = onOpenRef)
+
                 Verdict(
                     choice = choice,
                     // Judging your own option would be a note to self.
@@ -456,6 +486,20 @@ private fun ChoiceCard(
                     onJudge = onJudge,
                 )
             }
+        }
+
+        // Paired with the bin in the opposite corner, in the same gap above
+        // the card. Both are actions about the card rather than about the
+        // thing in the photograph, so neither belongs on the card itself.
+        IconButton(
+            onClick = { onRefer(choice) },
+            modifier = Modifier.align(Alignment.TopStart),
+        ) {
+            Icon(
+                Icons.AutoMirrored.Outlined.Chat,
+                contentDescription = "Talk about this in the chat",
+                tint = Color.White,
+            )
         }
 
         // Sits in the gap above the card, not over it — which is why it can
@@ -631,3 +675,53 @@ private fun AddOption(
 private val BIN_STRIP = 48.dp
 
 private val Liked = Color(0xFF3DDC84)
+
+/**
+ * The button that starts a conversation about a card, and the list of every
+ * conversation already had about it.
+ *
+ * Collapsed to a count until asked, because a card that has been argued over
+ * for a week would otherwise bury the photograph being argued about.
+ */
+@Composable
+private fun RefStrip(
+    refs: List<ChoiceRef>,
+    onOpenRef: (ChoiceRef) -> Unit,
+) {
+    if (refs.isEmpty()) return
+    var open by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        TextButton(onClick = { open = !open }) {
+            Text(if (open) "Hide ${refs.size}" else "${refs.size} referred")
+        }
+
+        if (open) {
+            // Newest first: the last thing said about a decision is nearly
+            // always the part you came back for.
+            refs.sortedByDescending { it.atMillis }.forEach { ref ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenRef(ref) }
+                        .padding(vertical = 6.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(22.dp)
+                            .background(MaterialTheme.colorScheme.primary),
+                    )
+                    Text(
+                        text = ref.text.ifBlank { "Message" },
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+            }
+        }
+    }
+}

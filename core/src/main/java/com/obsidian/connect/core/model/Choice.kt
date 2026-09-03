@@ -13,6 +13,24 @@ import java.util.Date
  * say which they like. The verdict belongs to whoever did *not* add it: a vote
  * on your own choice would be nothing but a note to self.
  */
+/**
+ * One time this card was talked about in the chat.
+ *
+ * A snapshot rather than a bare message id. The card has to be able to list
+ * everything ever said about it without loading the conversation, and the
+ * conversation only keeps its last two hundred messages anyway - so a
+ * reference to something older would resolve to nothing.
+ *
+ * [messageId] is still kept, because tapping a reference jumps back to the
+ * message itself when it is close enough to reach.
+ */
+data class ChoiceRef(
+    val messageId: String = "",
+    val byUid: String = "",
+    val text: String = "",
+    val atMillis: Long = 0L,
+)
+
 data class Choice(
     @DocumentId val id: String = "",
     val addedBy: String = "",
@@ -27,6 +45,15 @@ data class Choice(
      */
     val photo: Boolean = false,
     val note: String = "",
+
+    /**
+     * Every message written about this card, oldest first.
+     *
+     * Kept on the card rather than derived by searching the chat, so the whole
+     * history of a decision stays with the thing being decided - and survives
+     * the messages themselves scrolling out of the loaded window.
+     */
+    val refs: List<ChoiceRef> = emptyList(),
 
     /** 0 undecided, 1 liked, -1 disliked. */
     val verdict: Int = 0,

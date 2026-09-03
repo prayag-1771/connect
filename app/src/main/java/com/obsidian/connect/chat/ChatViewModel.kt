@@ -7,9 +7,12 @@ import androidx.lifecycle.viewModelScope
 import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.camera.ImageCompressor
 import com.obsidian.connect.core.data.AuthRepository
+import com.obsidian.connect.core.data.ChoiceRepository
 import com.obsidian.connect.core.data.MessageRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.UserRepository
+import com.obsidian.connect.core.model.Choice
+import com.obsidian.connect.core.model.ChoiceRef
 import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.Receipt
 import com.obsidian.connect.sync.SyncState
@@ -42,6 +45,7 @@ class ChatViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     userRepository: UserRepository,
     private val messageRepository: MessageRepository,
+    private val choiceRepository: ChoiceRepository,
     private val pairingRepository: PairingRepository,
     private val syncState: SyncState,
 ) : ViewModel() {
@@ -92,19 +96,20 @@ class ChatViewModel @Inject constructor(
      * A copy is archived here so it survives even though only the last 200
      * messages are read back.
      */
-    fun sendPhoto(jpeg: ByteArray) {
+    fun sendPhoto(jpeg: ByteArray, replyTo: Message? = null) {
         val id = pairingId.value ?: return
         val uid = authRepository.currentUid ?: return
 
         viewModelScope.launch {
-            messageRepository.sendPhoto(id, uid, jpeg).onSuccess { messageId ->
-                PhotoArchive.save(
-                    context = context,
-                    jpeg = jpeg,
-                    origin = PhotoArchive.Origin.Sent,
-                    id = messageId,
-                )
-            }
+            messageRepository.sendPhoto(id, uid, jpeg, replyTo = replyTo)
+                .onSuccess { messageId ->
+                    PhotoArchive.save(
+                        context = context,
+                        jpeg = jpeg,
+                        origin = PhotoArchive.Origin.Sent,
+                        id = messageId,
+                    )
+                }
         }
     }
 
@@ -278,12 +283,40 @@ class ChatViewModel @Inject constructor(
         recorder.cancel()
     }
 
-    fun send(text: String) {
+    /**
+     * Sends, optionally answering a message or a card from the choose deck.
+     *
+     * When it is about a card, the link is written at both ends: the message
+     * remembers which card it was about, and the card gains an entry pointing
+     * back. Either end can then be walked to the other, which is the whole
+     * point - a decision keeps everything ever said about it.
+     */
+    fun send(text: String, replyTo: Message? = null, choice: Choice? = null) {
         val id = pairingId.value ?: return
         val uid = authRepository.currentUid ?: return
         if (text.isBlank()) return
 
-        viewModelScope.launch { messageRepository.send(id, uid, text) }
+        viewModelScope.launch {
+            messageRepository.send(
+                pairingId = id,
+                senderId = uid,
+                text = text,
+                replyTo = replyTo,
+                choiceRefId = choice?.id.orEmpty(),
+            ).onSuccess { messageId ->
+                val card = choice ?: return@onSuccess
+                choiceRepository.addRef(
+                    pairingId = id,
+                    choiceId = card.id,
+                    ref = ChoiceRef(
+                        messageId = messageId,
+                        byUid = uid,
+                        text = text.trim().take(REF_LENGTH),
+                        atMillis = System.currentTimeMillis(),
+                    ),
+                )
+            }
+        }
     }
 
     /**
@@ -384,5 +417,8 @@ class ChatViewModel @Inject constructor(
 
         /** Long enough that typing does not fire a request per keystroke. */
         const val GIF_DEBOUNCE_MS = 350L
+
+        /** A card's reference list is a set of reminders, not a transcript. */
+        const val REF_LENGTH = 120
     }
 }

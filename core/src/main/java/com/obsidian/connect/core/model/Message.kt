@@ -59,6 +59,28 @@ data class Message(
     val starredBy: List<String> = emptyList(),
 
     /**
+     * The message this one is answering, if any.
+     *
+     * The quoted text and sender are copied rather than looked up. Only the
+     * last two hundred messages are ever loaded, so an answer to something
+     * older would otherwise render as an empty box - and a quote that cannot
+     * show what it is quoting is worse than no quote at all.
+     */
+    val replyToId: String = "",
+    val replyToText: String = "",
+    val replyToSender: String = "",
+    val replyToIsPhoto: Boolean = false,
+
+    /**
+     * The choose-for-me card this message was written about.
+     *
+     * Set when a reply is started from a card rather than from the
+     * conversation. The card keeps its own list pointing back here, so the
+     * link can be walked from either end.
+     */
+    val choiceRefId: String = "",
+
+    /**
      * Ordering key, set from the sending device's clock.
      *
      * Same reason as [Stroke]: a server timestamp is null on the writing device
@@ -85,6 +107,23 @@ data class Message(
 
     /** A function, not a getter, so Firestore does not treat it as a field. */
     fun isStarredBy(uid: String?): Boolean = uid != null && uid in starredBy
+
+    @get:Exclude
+    val isReply: Boolean get() = replyToId.isNotBlank()
+
+    @get:Exclude
+    val hasChoiceRef: Boolean get() = choiceRefId.isNotBlank()
+
+    /** What a quote of this message should say. */
+    @get:Exclude
+    val quotedSummary: String
+        get() = when {
+            text.isNotBlank() -> text
+            isPhoto -> "Photo"
+            hasAudio -> "Voice note"
+            hasGif -> "GIF"
+            else -> "Message"
+        }
 
     val hasAudio: Boolean get() = audio != null
 

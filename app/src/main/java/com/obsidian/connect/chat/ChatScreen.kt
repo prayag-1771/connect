@@ -1,6 +1,7 @@
 package com.obsidian.connect.chat
 
 import android.Manifest
+import android.widget.Toast
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -24,8 +25,15 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -82,6 +90,7 @@ import com.obsidian.connect.choose.CaptureTarget
 import com.obsidian.connect.choose.ChooseOverlay
 import com.obsidian.connect.editor.EditPhotoContract
 import kotlinx.coroutines.launch
+import com.obsidian.connect.core.model.Choice
 import com.obsidian.connect.core.model.DeliveryStatus
 import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.deliveryStatusOf
@@ -171,6 +180,15 @@ fun ChatScreen(
     // The message a long press is asking about. Null when nothing is held.
     var chosen by remember { mutableStateOf<Message?>(null) }
 
+    // What the next message will be answering: a message swiped aside, or a
+    // card sent over from the choose deck. Never both.
+    var replyingTo by remember { mutableStateOf<Message?>(null) }
+    var referring by remember { mutableStateOf<Choice?>(null) }
+
+    // A message the conversation has been asked to jump to, from a card's
+    // reference list. Highlighted briefly on arrival so the eye can find it.
+    var spotlight by remember { mutableStateOf<String?>(null) }
+
     var panelOpen by remember { mutableStateOf(false) }
     var chooseOpen by remember { mutableStateOf(false) }
     var panelTab by remember { mutableStateOf(AttachmentTab.Gifs) }
@@ -225,6 +243,34 @@ fun ChatScreen(
     // starts where it should and never has to move.
     val ordered = remember(messages) { messages.asReversed() }
 
+    // Walking a reference back to the message it points at.
+    //
+    // The conversation only holds its last two hundred messages, so a
+    // reference to something older has nothing to scroll to. Saying so beats
+    // scrolling somewhere arbitrary and leaving someone to wonder what they
+    // are looking at.
+    LaunchedEffect(spotlight, ordered) {
+        val target = spotlight ?: return@LaunchedEffect
+        val index = ordered.indexOfFirst { it.id == target }
+
+        if (index < 0) {
+            Toast.makeText(
+                context,
+                "That message is too old to jump to",
+                Toast.LENGTH_SHORT,
+            ).show()
+            spotlight = null
+            return@LaunchedEffect
+        }
+
+        listState.animateScrollToItem(index)
+        // Long enough to notice, short enough not to become the new normal
+        // appearance of that bubble.
+        delay(2_000)
+        spotlight = null
+    }
+
+
     // The scaffold reserves room for the bottom navigation bar, and the
     // keyboard covers that bar when it opens. Adding both leaves a gap the
     // height of the bar between the input row and the keyboard, so take
@@ -271,6 +317,13 @@ fun ChatScreen(
                 reverseLayout = true,
             ) {
                 items(items = ordered, key = { it.id }) { message ->
+                    SwipeToReply(
+                        mine = message.senderId == myUid,
+                        onReply = {
+                            replyingTo = message
+                            referring = null
+                        },
+                    ) {
                     Bubble(
                         message = message,
                         mine = message.senderId == myUid,
@@ -293,7 +346,9 @@ fun ChatScreen(
                                 playProgress = fraction
                             }
                         },
+                        spotlit = spotlight == message.id,
                     )
+                    }
                 }
             }
         }
@@ -331,6 +386,24 @@ fun ChatScreen(
                 clip = clip,
                 onDiscard = viewModel::discardPendingVoice,
                 onSend = viewModel::sendPendingVoice,
+            )
+        }
+
+        // Whichever of the two is live. A message swiped aside, or a card sent
+        // over from the deck - never both, so one strip serves for either.
+        val card = referring
+        val target = replyingTo
+        if (card != null) {
+            ReplyPreview(
+                heading = "About this card",
+                label = card.note.ifBlank { "Choose for me" },
+                onCancel = { referring = null },
+            )
+        } else if (target != null) {
+            ReplyPreview(
+                heading = if (target.senderId == myUid) "Replying to yourself" else "Replying",
+                label = target.quotedSummary,
+                onCancel = { replyingTo = null },
             )
         }
 
@@ -423,8 +496,10 @@ fun ChatScreen(
             } else {
                 FilledIconButton(
                     onClick = {
-                        viewModel.send(draft)
+                        viewModel.send(draft, replyTo = replyingTo, choice = referring)
                         draft = ""
+                        replyingTo = null
+                        referring = null
                     },
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
@@ -452,6 +527,11 @@ fun ChatScreen(
         if (chooseOpen) {
             ChooseOverlay(
                 onDismiss = { chooseOpen = false },
+                onRefer = { card ->
+                    referring = card
+                    replyingTo = null
+                },
+                onOpenRef = { ref -> spotlight = ref.messageId },
                 bottomInset = barBottom,
             )
         }
@@ -550,6 +630,7 @@ private fun Bubble(
     onTogglePlay: () -> Unit,
     onSeek: (Float) -> Unit,
     onLongPress: () -> Unit,
+    spotlit: Boolean = false,
 ) {
     Row(
         modifier = Modifier
@@ -569,10 +650,12 @@ private fun Bubble(
             modifier = Modifier
                 .widthIn(max = 280.dp)
                 .background(
-                    color = if (mine) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainerHighest
+                    color = when {
+                        // Briefly lifted when arrived at from a card's
+                        // reference list, so the eye lands on the right one.
+                        spotlit -> MaterialTheme.colorScheme.tertiaryContainer
+                        mine -> MaterialTheme.colorScheme.primaryContainer
+                        else -> MaterialTheme.colorScheme.surfaceContainerHighest
                     },
                     shape = RoundedCornerShape(
                         topStart = 18.dp,
@@ -585,6 +668,20 @@ private fun Bubble(
                 )
                 .padding(horizontal = 14.dp, vertical = 9.dp),
         ) {
+            // The quote sits inside the bubble, above what was actually said,
+            // so an answer and the thing it answers read as one block.
+            if (message.isReply || message.hasChoiceRef) {
+                QuotedStrip(
+                    label = when {
+                        message.hasChoiceRef -> "About a card"
+                        message.replyToIsPhoto -> "Photo"
+                        else -> message.replyToText
+                    },
+                    mine = mine,
+                )
+                Spacer(Modifier.height(6.dp))
+            }
+
             if (message.isPhoto) {
                 val bubbleContext = LocalContext.current
 
@@ -817,5 +914,85 @@ private fun MissingPhoto() {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/**
+ * The thing a message is answering, drawn inside it.
+ *
+ * A bar and one line. A quote is a reminder of what was being talked about,
+ * not a second copy of it - anything longer competes with the reply itself.
+ */
+@Composable
+private fun QuotedStrip(label: String, mine: Boolean) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (mine) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
+                },
+            )
+            .height(IntrinsicSize.Min)
+            .padding(end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(MaterialTheme.colorScheme.primary),
+        )
+        Text(
+            text = label.ifBlank { "Message" },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 8.dp, top = 6.dp, bottom = 6.dp),
+        )
+    }
+}
+
+/**
+ * What the next message will be answering, shown above the composer.
+ *
+ * Dismissable, because starting a reply by accident is easy - the gesture is a
+ * sideways drag on something people also scroll past.
+ */
+@Composable
+private fun ReplyPreview(label: String, heading: String, onCancel: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = heading,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = label.ifBlank { "Message" },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(onClick = onCancel) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Don't reply to this",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
