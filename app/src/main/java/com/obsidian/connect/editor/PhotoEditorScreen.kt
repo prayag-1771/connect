@@ -16,10 +16,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Undo
@@ -86,6 +85,11 @@ fun PhotoEditorScreen(
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnClickOutside = false,
+            // Without this the dialog window sizes itself against the full
+            // display while its content is laid out against a smaller area,
+            // and the bottom row — the chips and the confirm button — falls
+            // off the end of the screen.
+            decorFitsSystemWindows = false,
         ),
     ) {
         EditorContent(
@@ -121,8 +125,10 @@ private fun EditorContent(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .statusBarsPadding()
-            .navigationBarsPadding(),
+            // One call covering the status bar, the gesture bar and anything
+            // else the system reserves. Padding for each separately is how
+            // the confirm button ended up under the navigation bar.
+            .safeDrawingPadding(),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -152,7 +158,15 @@ private fun EditorContent(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            Box(modifier = Modifier.fillMaxWidth().aspectRatio(aspect)) {
+            // Inset from the edges so the left and right crop handles are
+            // fully on screen. At full width half of each sits past the
+            // display and cannot be grabbed at all.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 28.dp)
+                    .aspectRatio(aspect),
+            ) {
                 bitmap?.let {
                     Image(
                         bitmap = it.asImageBitmap(),
