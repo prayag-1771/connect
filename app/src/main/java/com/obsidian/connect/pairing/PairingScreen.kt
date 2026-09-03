@@ -2,6 +2,7 @@ package com.obsidian.connect.pairing
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,8 +58,18 @@ fun PairingScreen(
         if (current != null && current.isComplete) onPaired()
     }
 
+    Box(modifier = modifier.fillMaxSize()) {
+        // Top right, out of the way of everything else on this screen, and
+        // where a way out is normally looked for.
+        TextButton(
+            onClick = viewModel::signOut,
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+        ) {
+            Text("Sign out")
+        }
+
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .padding(24.dp),
         verticalArrangement = Arrangement.Center,
@@ -87,6 +98,7 @@ fun PairingScreen(
                 textAlign = TextAlign.Center,
             )
         }
+    }
     }
 }
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -139,8 +140,11 @@ fun AuthScreen(
             modifier = Modifier.fillMaxWidth(),
         ) {
             if (state.busy) {
+                // size, not height. Constraining one dimension left the other
+                // at the default forty, so the circle was drawn wider than the
+                // space it had and lost its bottom edge to the button.
                 CircularProgressIndicator(
-                    modifier = Modifier.height(18.dp),
+                    modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
                 )
             } else {

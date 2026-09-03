@@ -5,6 +5,7 @@ import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.MessageRepository
 import com.obsidian.connect.core.data.MomentRepository
 import com.obsidian.connect.core.data.CallRepository
+import com.obsidian.connect.core.data.ChoiceRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.ReminderRepository
 import com.obsidian.connect.core.data.StrokeRepository
@@ -52,6 +53,7 @@ class WidgetLiveUpdater @Inject constructor(
     private val strokeRepository: StrokeRepository,
     private val reminderRepository: ReminderRepository,
     private val callRepository: CallRepository,
+    private val choiceRepository: ChoiceRepository,
     private val syncState: SyncState,
 ) {
 
@@ -105,6 +107,35 @@ class WidgetLiveUpdater @Inject constructor(
                 // Same as the scheduled sync: once it is on disk and on the
                 // widget, the copy in Firestore is erased.
                 if (saved.exists()) momentRepository.clearImage(moment.id)
+            }
+    }
+
+    /**
+     * Lights the yellow dot when a card is put up for you to judge.
+     *
+     * Only for cards the other person added - your own are not news to you.
+     * The watermark is not advanced here: showing the dot is not the same as
+     * having looked, and advancing it on show is what made the drawing light
+     * appear exactly once and never again. Opening the deck is what clears it.
+     */
+    suspend fun watchChoices() {
+        pairing()
+            .flatMapLatest { current ->
+                if (current == null) flowOf(emptyList()) else choiceRepository.observe(current.first)
+            }
+            .collect { choices ->
+                val uid = authRepository.currentUid ?: return@collect
+
+                val newest = choices
+                    .filter { it.addedBy != uid }
+                    .maxOfOrNull { it.createdAtMillis }
+                    ?: return@collect
+
+                if (newest <= syncState.lastSeenChoiceAt) return@collect
+                if (WidgetCaptionStore.hasNewChoice(context)) return@collect
+
+                WidgetCaptionStore.writeNewChoice(context, true)
+                MomentWidgetUpdater.refresh(context)
             }
     }
 

@@ -19,6 +19,7 @@ object WidgetCaptionStore {
     private const val KEY_SENDER = "sender"
     private const val KEY_UNREAD = "unread"
     private const val KEY_NEW_DRAWING = "new_drawing"
+        const val KEY_NEW_CHOICE = "new_choice"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -48,6 +49,14 @@ object WidgetCaptionStore {
     fun writeNewDrawing(context: Context, pending: Boolean) {
         prefs(context).edit().putBoolean(KEY_NEW_DRAWING, pending).apply()
     }
+
+    /** A card the other person has put up and this phone has not shown yet. */
+    fun writeNewChoice(context: Context, pending: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NEW_CHOICE, pending).apply()
+    }
+
+    fun hasNewChoice(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NEW_CHOICE, false)
 
     fun hasNewDrawing(context: Context): Boolean =
         prefs(context).getBoolean(KEY_NEW_DRAWING, false)

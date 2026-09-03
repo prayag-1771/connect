@@ -49,6 +49,7 @@ object WatchFaceRenderer {
     private const val DOT_OUTLINE_RATIO = 0.014f
 
     private val DOT_GREEN = 0xFF3DDC84u.toInt()
+    private val DOT_YELLOW = 0xFFFFC53Du.toInt()
     private val DOT_OUTLINE = 0xCC0B0B0Fu.toInt()
 
     /** Stand-in disc for before any photo has arrived. */
@@ -87,23 +88,55 @@ object WatchFaceRenderer {
             drawScrim(canvas, centre, radius)
         }
 
-        if (hasUnread) drawUnreadDot(canvas, centre, radius, size)
+        // Dots are no longer painted here. They live on their own layer above
+        // the clock, because the dial ring is drawn over this bitmap and was
+        // cutting straight through them.
         return output
     }
 
     /**
-     * A green dot sitting on the rim, at roughly ten-thirty.
+     * The status dots, on a transparent layer of their own.
      *
-     * Top-left rather than top-right so it does not collide with the blue
-     * corner light, which marks a new drawing and needs its own tap target.
+     * Separate from the face because the AnalogClock sits on top of the photo,
+     * and its dial ring was being drawn straight through anything painted into
+     * it. A dot the rim cuts through reads as a smudge, not a signal.
      *
-     * Centred on the ring rather than inside it, so it reads as part of the
-     * bezel instead of something floating on the photo. The dark outline is
-     * what keeps it visible against a light picture — a flat green circle
-     * disappears against grass or a bright wall.
+     * Returns null when there is nothing to say, so the caller can hide the
+     * view entirely rather than stacking an empty bitmap over the clock.
      */
-    private fun drawUnreadDot(canvas: Canvas, centre: Float, radius: Float, size: Int) {
-        val angle = Math.toRadians(-135.0)
+    fun dotsOverlay(size: Int, hasUnread: Boolean, hasNewChoice: Boolean): Bitmap? {
+        if (!hasUnread && !hasNewChoice) return null
+
+        val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+        val centre = size / 2f
+        val radius = centre * DIAL_RATIO
+
+        // Both on the left, one below the other. Left rather than right so
+        // neither collides with the blue corner light, which marks a new
+        // drawing and needs its own tap target.
+        if (hasUnread) dot(canvas, centre, radius, size, UNREAD_ANGLE, DOT_GREEN)
+        if (hasNewChoice) dot(canvas, centre, radius, size, CHOICE_ANGLE, DOT_YELLOW)
+
+        return output
+    }
+
+    /**
+     * One dot, centred on the ring rather than inside it, so it reads as part
+     * of the bezel instead of something floating on the photo.
+     *
+     * The dark outline is what keeps it visible against a light picture — a
+     * flat coloured circle disappears against grass or a bright wall.
+     */
+    private fun dot(
+        canvas: Canvas,
+        centre: Float,
+        radius: Float,
+        size: Int,
+        degrees: Double,
+        colour: Int,
+    ) {
+        val angle = Math.toRadians(degrees)
         val x = centre + (radius * cos(angle)).toFloat()
         val y = centre + (radius * sin(angle)).toFloat()
         val dot = size * DOT_RATIO
@@ -111,9 +144,13 @@ object WatchFaceRenderer {
         val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DOT_OUTLINE }
         canvas.drawCircle(x, y, dot + size * DOT_OUTLINE_RATIO, outline)
 
-        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DOT_GREEN }
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colour }
         canvas.drawCircle(x, y, dot, fill)
     }
+
+    /** Roughly ten-thirty, and a little below it. */
+    private const val UNREAD_ANGLE = -135.0
+    private const val CHOICE_ANGLE = -163.0
 
     /**
      * Centre-crops [source] to fill the circle of [radius] exactly.

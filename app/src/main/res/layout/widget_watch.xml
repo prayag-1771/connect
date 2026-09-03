@@ -41,6 +41,23 @@
         android:hand_minute="@drawable/watch_hand_minute" />
 
     <!--
+      The status dots, on their own layer above the clock.
+      
+      They used to be painted into the photo bitmap, which sits underneath the
+      AnalogClock - so the dial ring was drawn straight across them. A dot the
+      rim cuts through reads as a smudge rather than a signal, so they get their
+      own view, above everything except the caption.
+    -->
+    <ImageView
+        android:id="@+id/watch_dots"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitCenter"
+        android:adjustViewBounds="true"
+        android:contentDescription="@string/watch_widget_unread"
+        android:visibility="gone" />
+
+    <!--
       Tap target for the unread dot, which is painted into the photo bitmap and
       so cannot be clicked on its own. Top-left, matching where the renderer
       puts the dot. An ImageView because plain View is not on the RemoteViews

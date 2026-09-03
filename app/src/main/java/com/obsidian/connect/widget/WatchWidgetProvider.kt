@@ -90,9 +90,21 @@ class WatchWidgetProvider : AppWidgetProvider() {
                 WatchFaceRenderer.circularFace(
                     source = if (active) WidgetImageStore.decode(context, facePx) else null,
                     size = facePx,
-                    hasUnread = active && WidgetCaptionStore.hasUnread(context),
                 ),
             )
+
+            // Drawn above the clock rather than into the photo, so the dial
+            // ring cannot be laid across them.
+            val unreadDot = active && WidgetCaptionStore.hasUnread(context)
+            val choiceDot = active && WidgetCaptionStore.hasNewChoice(context)
+            val dots = WatchFaceRenderer.dotsOverlay(facePx, unreadDot, choiceDot)
+
+            if (dots == null) {
+                views.setViewVisibility(R.id.watch_dots, View.GONE)
+            } else {
+                views.setImageViewBitmap(R.id.watch_dots, dots)
+                views.setViewVisibility(R.id.watch_dots, View.VISIBLE)
+            }
 
             val caption = WidgetCaptionStore.read(context).takeIf { active }
             if (caption.isNullOrBlank()) {
@@ -108,14 +120,13 @@ class WatchWidgetProvider : AppWidgetProvider() {
                 if (active) openApp(context) else openClock(context),
             )
 
-            // The dot is painted into the bitmap, so it needs a separate
-            // invisible view over it to be tappable at all.
-            val unread = active && WidgetCaptionStore.hasUnread(context)
+            // The dots are drawn, not laid out, so they need a separate
+            // invisible view over them to be tappable at all.
             views.setViewVisibility(
                 R.id.watch_unread_touch,
-                if (unread) View.VISIBLE else View.GONE,
+                if (unreadDot) View.VISIBLE else View.GONE,
             )
-            if (unread) {
+            if (unreadDot) {
                 views.setOnClickPendingIntent(R.id.watch_unread_touch, openQuickReply(context))
             }
 

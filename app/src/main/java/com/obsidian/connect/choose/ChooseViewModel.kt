@@ -10,6 +10,9 @@ import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.ChoiceRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.core.model.Choice
+import com.obsidian.connect.widget.WidgetCaptionStore
+import com.obsidian.connect.widget.MomentWidgetUpdater
+import com.obsidian.connect.sync.SyncState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +38,7 @@ class ChooseViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     userRepository: UserRepository,
     private val choiceRepository: ChoiceRepository,
+    private val syncState: SyncState,
 ) : ViewModel() {
 
     val myUid: String? get() = authRepository.currentUid
@@ -73,6 +77,30 @@ class ChooseViewModel @Inject constructor(
                     )
                 }
         }.getOrNull()
+    }
+
+    /**
+     * Puts the yellow dot out.
+     *
+     * Called when the deck is actually on screen rather than when the app
+     * opens, so a card is only marked seen by someone who has looked at it.
+     */
+    fun markChoicesSeen(choices: List<Choice>) {
+        val uid = authRepository.currentUid ?: return
+        val newest = choices
+            .filter { it.addedBy != uid }
+            .maxOfOrNull { it.createdAtMillis }
+            ?: return
+
+        if (newest <= syncState.lastSeenChoiceAt && !WidgetCaptionStore.hasNewChoice(context)) {
+            return
+        }
+
+        syncState.lastSeenChoiceAt = newest
+        viewModelScope.launch {
+            WidgetCaptionStore.writeNewChoice(context, false)
+            MomentWidgetUpdater.refresh(context)
+        }
     }
 
     fun add(jpeg: ByteArray) {

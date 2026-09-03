@@ -54,6 +54,11 @@ class SyncState @Inject constructor(
         get() = prefs.getLong(KEY_LAST_STROKE, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_STROKE, value).apply()
 
+    /** Newest card this phone has already flagged, so the dot is not re-lit. */
+    var lastSeenChoiceAt: Long
+        get() = prefs.getLong(KEY_LAST_CHOICE, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_CHOICE, value).apply()
+
     fun clear() = prefs.edit().clear().apply()
 
     private companion object {
@@ -61,5 +66,6 @@ class SyncState @Inject constructor(
         const val KEY_LAST_NUDGE = "last_nudge_at"
         const val KEY_LAST_READ_MESSAGE = "last_read_message_at"
         const val KEY_LAST_STROKE = "last_seen_stroke_at"
+        const val KEY_LAST_CHOICE = "last_seen_choice_at"
     }
 }

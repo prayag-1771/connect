@@ -33,6 +33,17 @@ class PairingViewModel @Inject constructor(
     private val pairingRepository: PairingRepository,
 ) : ViewModel() {
 
+    /**
+     * Leaves the account, from the one screen with no other way out.
+     *
+     * Before pairing there is no profile tab to reach, so someone signed in as
+     * the wrong person - or wanting to hand the phone over - would otherwise be
+     * stuck looking at an invite code they cannot use.
+     */
+    fun signOut() {
+        authRepository.signOut()
+    }
+
     private val _uiState = MutableStateFlow(PairingUiState())
     val uiState: StateFlow<PairingUiState> = _uiState.asStateFlow()
 

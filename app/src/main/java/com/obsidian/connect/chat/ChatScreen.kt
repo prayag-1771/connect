@@ -372,6 +372,7 @@ fun ChatScreen(
                             openChoiceId = id
                             chooseOpen = true
                         },
+                        onOpenMessage = { id -> spotlight = id },
                         playing = player.isPlaying(message.id),
                         progress = if (playingId == message.id) playProgress else 0f,
                         onTogglePlay = {
@@ -705,6 +706,7 @@ private fun Bubble(
     onSeek: (Float) -> Unit,
     onLongPress: () -> Unit,
     onOpenChoice: (String) -> Unit,
+    onOpenMessage: (String) -> Unit,
     palette: ChatColors?,
     spotlit: Boolean = false,
 ) {
@@ -774,12 +776,20 @@ private fun Bubble(
                     },
                     mine = mine,
                     thumbnail = cardThumb,
-                    // Only a card can be opened. A quoted message is already
-                    // in the conversation, a few rows up.
-                    onOpen = if (message.hasChoiceRef) {
-                        { onOpenChoice(message.choiceRefId) }
-                    } else {
-                        null
+                    // Both kinds of quote are now walkable. A card opens the
+                    // deck; a quoted message scrolls the conversation back to
+                    // it. "A few rows up" was only ever true for the reply
+                    // immediately after - by the time a conversation has moved
+                    // on, the thing being answered is as far away as anything
+                    // else.
+                    onOpen = when {
+                        message.hasChoiceRef -> {
+                            { onOpenChoice(message.choiceRefId) }
+                        }
+                        message.isReply -> {
+                            { onOpenMessage(message.replyToId) }
+                        }
+                        else -> null
                     },
                 )
                 Spacer(Modifier.height(6.dp))

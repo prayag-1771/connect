@@ -118,6 +118,11 @@ fun ChooseOverlay(
         viewModel.archiveIncoming(choices)
     }
 
+    // Looking at the deck is what puts the yellow dot out.
+    LaunchedEffect(choices.size) {
+        viewModel.markChoicesSeen(choices)
+    }
+
     var confirmingDelete by remember { mutableStateOf<Choice?>(null) }
     var side by remember { mutableStateOf(ChoiceSide.Mine) }
 
