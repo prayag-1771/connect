@@ -124,87 +124,20 @@ private fun JamScreen(
     }
 
     var link by remember { mutableStateOf("") }
-    var ready by remember { mutableStateOf(false) }
-    var localPlaying by remember { mutableStateOf(false) }
-    var localPositionMs by remember { mutableLongStateOf(0L) }
-    var loadedVideo by remember { mutableStateOf("") }
 
-    // Set while a remote instruction is being carried out, so the resulting
-    // player callback is not mistaken for something this person did and written
-    // straight back - which is how two phones talk each other into a loop.
-    var applying by remember { mutableStateOf(false) }
+    // The player is not here. It lives in JamPlayerHolder, driven by the
+    // app-wide watcher, so that leaving this screen does not stop the music.
+    // Everything below only writes to the shared session and reads it back.
+    val playing = session?.playing == true
 
-    val player = remember {
-        JamPlayer(
-            context = context,
-            onReady = { ready = true },
-            onStateChange = { playing ->
-                localPlaying = playing
-                if (!applying) viewModel.report(playing, localPositionMs)
-            },
-            onPositionMs = { localPositionMs = it },
-            onError = { viewModel.showProblem(it) },
-        )
-    }
-
+    // Joining, and staying joined.
+    //
+    // Leaving this screen is not leaving the jam - that is the whole point of
+    // the music continuing. Only End takes you out, which is also what stops
+    // your phone playing.
     DisposableEffect(Unit) {
         viewModel.join()
-        onDispose {
-            viewModel.leave()
-            player.release()
-        }
-    }
-
-    // The driver refreshes the stored position every half minute.
-    //
-    // Without it the position is only ever written on a play, a pause or a
-    // seek, and someone joining ten minutes into a track would be told the
-    // position from ten minutes ago plus ten minutes of elapsed time - which
-    // runs off the end of anything shorter than that. Refreshing bounds the
-    // guess to thirty seconds and costs two writes a minute.
-    LaunchedEffect(ready, localPlaying, session?.byUid) {
-        if (!ready || !localPlaying) return@LaunchedEffect
-        if (!viewModel.isDriver(session)) return@LaunchedEffect
-
-        while (true) {
-            delay(30_000)
-            if (!localPlaying) break
-            viewModel.report(true, localPositionMs)
-        }
-    }
-
-    // Follow whatever the session says. Keyed on the whole thing, so a pause
-    // written by the other phone lands as promptly as a new track does.
-    LaunchedEffect(session, ready) {
-        val current = session ?: return@LaunchedEffect
-        if (!ready || !current.isLoaded) return@LaunchedEffect
-
-        applying = true
-
-        if (current.videoId != loadedVideo) {
-            loadedVideo = current.videoId
-            player.load(current.videoId, current.expectedPositionMs(), current.playing)
-        } else {
-            val target = current.expectedPositionMs()
-            // Only correct real drift. Nudging by a tenth of a second would
-            // stutter the audio constantly and fix nothing anyone could hear.
-            if (abs(target - localPositionMs) > DRIFT_TOLERANCE_MS) player.seekTo(target)
-            if (current.playing) player.play() else player.pause()
-        }
-
-        // Long enough for the player to have finished reacting, short enough
-        // that a real tap a moment later is still treated as one.
-        delay(600)
-        applying = false
-    }
-
-    // The player is asked where it is rather than told; the answer feeds drift
-    // correction and the position written on the next play or pause.
-    LaunchedEffect(ready) {
-        while (ready) {
-            player.requestPosition()
-            delay(1_000)
-        }
+        onDispose { }
     }
 
     Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -224,7 +157,7 @@ private fun JamScreen(
 
             if (session?.isLoaded == true) {
                 Spacer(Modifier.size(8.dp))
-                OutlinedButton(onClick = viewModel::end) { Text("End") }
+                OutlinedButton(onClick = viewModel::leaveJam) { Text("End") }
             }
         }
 
@@ -244,17 +177,6 @@ private fun JamScreen(
                 )
             }
             return@Column
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f),
-        ) {
-            AndroidView(
-                factory = { player.view },
-                modifier = Modifier.fillMaxSize(),
-            )
         }
 
         Column(
@@ -283,17 +205,17 @@ private fun JamScreen(
                 ) {
                     FilledIconButton(
                         onClick = {
-                            if (localPlaying) player.pause() else player.play()
+                            viewModel.report(!playing, JamPlayerHolder.lastPositionMs)
                         },
                         modifier = Modifier.size(56.dp),
                     ) {
                         Icon(
-                            imageVector = if (localPlaying) {
+                            imageVector = if (playing) {
                                 Icons.Filled.Pause
                             } else {
                                 Icons.Filled.PlayArrow
                             },
-                            contentDescription = if (localPlaying) "Pause" else "Play",
+                            contentDescription = if (playing) "Pause" else "Play",
                         )
                     }
                 }

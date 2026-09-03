@@ -131,6 +131,24 @@ class JamViewModel @Inject constructor(
         viewModelScope.launch { jamRepository.end(pairing) }
     }
 
+    /**
+     * Takes this person out, and tears the jam down if that was the last of
+     * them.
+     *
+     * Leaving is per-person because the other one may still be listening -
+     * ending it for both because you stopped would be taking their music away.
+     */
+    fun leaveJam() {
+        val pairing = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+
+        viewModelScope.launch {
+            jamRepository.leave(pairing, uid)
+            val remaining = session.value?.listeners.orEmpty().filterNot { it == uid }
+            if (remaining.isEmpty()) jamRepository.end(pairing)
+        }
+    }
+
     /** True when this update came from the other phone and should be obeyed. */
     fun isTheirs(session: JamSession): Boolean =
         session.byUid.isNotBlank() && session.byUid != authRepository.currentUid

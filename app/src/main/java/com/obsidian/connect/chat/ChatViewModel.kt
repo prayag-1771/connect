@@ -8,13 +8,16 @@ import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.camera.ImageCompressor
 import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.ChoiceRepository
+import com.obsidian.connect.core.data.JamRepository
 import com.obsidian.connect.core.data.MessageRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.core.model.Choice
 import com.obsidian.connect.core.model.ChoiceRef
+import com.obsidian.connect.core.model.JamSession
 import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.Receipt
+import com.obsidian.connect.jam.JamPlayerHolder
 import com.obsidian.connect.sync.SyncState
 import com.obsidian.connect.ui.theme.ChatTheme
 import com.obsidian.connect.widget.MomentWidgetUpdater
@@ -47,6 +50,7 @@ class ChatViewModel @Inject constructor(
     userRepository: UserRepository,
     private val messageRepository: MessageRepository,
     private val choiceRepository: ChoiceRepository,
+    private val jamRepository: JamRepository,
     private val pairingRepository: PairingRepository,
     private val syncState: SyncState,
 ) : ViewModel() {
@@ -130,6 +134,25 @@ class ChatViewModel @Inject constructor(
         .flatMapLatest { id -> if (id == null) flowOf(null) else pairingRepository.observe(id) }
         .map { ChatTheme.from(it?.chatTheme.orEmpty()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), ChatTheme.Default)
+
+    /**
+     * The jam, so the chat can stop it without going back to the jam screen.
+     *
+     * Leaving that screen no longer stops the music, which is the point - but
+     * it does mean the pause control has to exist somewhere you can reach.
+     */
+    val jamSession: StateFlow<JamSession?> = pairingId
+        .flatMapLatest { id -> if (id == null) flowOf(null) else jamRepository.observe(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+
+    fun setJamPlaying(playing: Boolean) {
+        val id = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+
+        viewModelScope.launch {
+            jamRepository.update(id, uid, playing, JamPlayerHolder.lastPositionMs)
+        }
+    }
 
     /** Their watermarks, which is what says how far your messages have got. */
     val partnerReceipt: StateFlow<Receipt?> = combine(pairingId, partnerId) { id, partner ->

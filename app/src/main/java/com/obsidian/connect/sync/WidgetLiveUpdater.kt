@@ -6,6 +6,7 @@ import com.obsidian.connect.core.data.MessageRepository
 import com.obsidian.connect.core.data.MomentRepository
 import com.obsidian.connect.core.data.CallRepository
 import com.obsidian.connect.core.data.ChoiceRepository
+import com.obsidian.connect.core.data.JamRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.ReminderRepository
 import com.obsidian.connect.core.data.StrokeRepository
@@ -14,6 +15,9 @@ import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.alarm.ReminderAlarmScheduler
 import com.obsidian.connect.call.CallActivity
 import com.obsidian.connect.core.model.CallState
+import com.obsidian.connect.core.model.JamSession
+import com.obsidian.connect.jam.JamPlayerHolder
+import com.obsidian.connect.jam.JamService
 import com.obsidian.connect.core.model.Moment
 import com.obsidian.connect.core.model.ReminderScope
 import com.obsidian.connect.widget.DrawingBubble
@@ -54,6 +58,7 @@ class WidgetLiveUpdater @Inject constructor(
     private val reminderRepository: ReminderRepository,
     private val callRepository: CallRepository,
     private val choiceRepository: ChoiceRepository,
+    private val jamRepository: JamRepository,
     private val syncState: SyncState,
 ) {
 
@@ -136,6 +141,71 @@ class WidgetLiveUpdater @Inject constructor(
 
                 WidgetCaptionStore.writeNewChoice(context, true)
                 MomentWidgetUpdater.refresh(context)
+            }
+    }
+
+    /**
+     * Keeps the music playing, wherever you are in the app.
+     *
+     * Watched here rather than from the jam screen, because the jam screen is
+     * exactly what a person leaves when they go back to the chat. Anything
+     * driving playback from inside it would stop the moment they did.
+     *
+     * The player is only released when the session ends, which is the one
+     * thing that actually means "stop".
+     */
+    suspend fun watchJam() {
+        pairing()
+            .flatMapLatest { current ->
+                if (current == null) flowOf(null) else jamRepository.observe(current.first)
+            }
+            .collect { session ->
+                if (session == null || !session.isLoaded) {
+                    withContext(Dispatchers.Main) {
+                        JamPlayerHolder.release(context)
+                        JamService.stop(context)
+                    }
+                    return@collect
+                }
+
+                // Spotify plays in its own app; there is nothing here to drive.
+                if (!session.isFor(JamSession.YOUTUBE)) return@collect
+
+                // Only for someone who opened the jam. Starting a track should
+                // not make sound come out of the other person's phone while it
+                // is in their pocket - they join by opening it, and until then
+                // this is none of their phone's business.
+                val uid = authRepository.currentUid
+                if (uid == null || uid !in session.listeners) {
+                    withContext(Dispatchers.Main) {
+                        JamPlayerHolder.release(context)
+                        JamService.stop(context)
+                    }
+                    return@collect
+                }
+
+                withContext(Dispatchers.Main) {
+                    // Started before the player, so the platform already knows
+                    // this process is making sound by the time it does.
+                    if (session.playing) {
+                        JamService.start(context, session.title)
+                    } else {
+                        JamService.stop(context)
+                    }
+
+                    if (session.videoId != JamPlayerHolder.loadedVideoId) {
+                        JamPlayerHolder.load(
+                            context = context,
+                            videoId = session.videoId,
+                            startMs = session.expectedPositionMs(),
+                            play = session.playing,
+                        )
+                    } else if (session.playing) {
+                        JamPlayerHolder.play(context)
+                    } else {
+                        JamPlayerHolder.pause(context)
+                    }
+                }
             }
     }
 

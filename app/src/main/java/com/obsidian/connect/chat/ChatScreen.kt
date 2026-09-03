@@ -98,6 +98,8 @@ import com.obsidian.connect.core.model.deliveryStatusOf
 import androidx.compose.material.icons.filled.VideoCall
 import com.obsidian.connect.call.CallActivity
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.PauseCircle
 import com.obsidian.connect.jam.JamActivity
 import com.obsidian.connect.jam.JamChooser
 import com.obsidian.connect.jam.SpotifySetupActivity
@@ -184,6 +186,7 @@ fun ChatScreen(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> if (granted) viewModel.startRecording() }
 
+    val jamSession by viewModel.jamSession.collectAsStateWithLifecycle()
     val chatTheme by viewModel.chatTheme.collectAsStateWithLifecycle()
     val palette = chatTheme.colors(isSystemInDarkTheme() || AppearanceStore.themeMode == ThemeMode.Dark)
 
@@ -345,6 +348,30 @@ fun ChatScreen(
                         contentDescription = "Listen together",
                         tint = MaterialTheme.colorScheme.primary,
                     )
+                }
+
+                // Only while something is actually on. A transport control for
+                // silence is just a button that lies about what it does.
+                jamSession?.takeIf { it.isLoaded }?.let { current ->
+                    IconButton(
+                        onClick = {
+                            viewModel.setJamPlaying(!current.playing)
+                        },
+                    ) {
+                        Icon(
+                            imageVector = if (current.playing) {
+                                Icons.Filled.PauseCircle
+                            } else {
+                                Icons.Filled.PlayCircle
+                            },
+                            contentDescription = if (current.playing) {
+                                "Pause the jam"
+                            } else {
+                                "Resume the jam"
+                            },
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
 
