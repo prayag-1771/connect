@@ -1,17 +1,18 @@
 package com.obsidian.connect.reminders
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAddCheck
@@ -31,13 +32,12 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -64,8 +64,17 @@ fun RemindersScreen(
     // A working copy the drag rearranges, so an item follows the finger rather
     // than waiting on a round trip to Firestore and back.
     var arranged by remember(reminders) { mutableStateOf(reminders) }
-    var draggingId by remember { mutableStateOf<String?>(null) }
-    var dragOffset by remember { mutableFloatStateOf(0f) }
+
+    val listState = rememberLazyListState()
+    val reorder = rememberReorderState(
+        listState = listState,
+        onMove = { from, to ->
+            arranged = arranged.toMutableList().apply {
+                if (from in indices && to in indices) add(to, removeAt(from))
+            }
+        },
+        onSettled = { viewModel.reorder(arranged.map { it.id }) },
+    )
 
     LaunchedEffect(uiState.message) {
         uiState.message?.let { message ->
@@ -109,6 +118,7 @@ fun RemindersScreen(
                 EmptyState(scope = scope, paired = pairingId != null)
             } else {
                 LazyColumn(
+                    state = listState,
                     contentPadding = PaddingValues(
                         start = 16.dp,
                         end = 16.dp,
@@ -117,7 +127,16 @@ fun RemindersScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    itemsIndexed(items = arranged, key = { _, item -> item.id }) { index, reminder ->
+                    items(items = arranged, key = { it.id }) { reminder ->
+                        val dragging = reorder.isDragging(reminder.id)
+
+                        // Lifts as it is picked up, so a held row reads as
+                        // detached from the list rather than merely tinted.
+                        val lift by animateFloatAsState(
+                            targetValue = if (dragging) 1f else 0f,
+                            label = "lift",
+                        )
+
                         ReminderRow(
                             reminder = reminder,
                             // Only worth offering on the shared list, and only
@@ -127,38 +146,32 @@ fun RemindersScreen(
                             onNudge = { viewModel.nudge(reminder) },
                             onDelete = { viewModel.delete(reminder) },
                             onClick = { editing = EditorTarget.Existing(reminder) },
-                            modifier = Modifier.zIndex(if (draggingId == reminder.id) 1f else 0f),
+                            modifier = Modifier
+                                // Above its neighbours while held, so it
+                                // passes over them rather than through them.
+                                .zIndex(lift)
+                                .graphicsLayer {
+                                    translationY = if (dragging) reorder.offset else 0f
+                                    val scale = 1f + 0.03f * lift
+                                    scaleX = scale
+                                    scaleY = scale
+                                    shadowElevation = 12.dp.toPx() * lift
+                                    shape = RoundedCornerShape(16.dp)
+                                    clip = false
+                                }
+                                // The rows it displaces slide out of the way.
+                                // Not the dragged row itself - it is already
+                                // being positioned by the finger, and a second
+                                // animation fighting that is what makes a
+                                // reorder feel rubbery.
+                                .then(
+                                    if (dragging) Modifier else Modifier.animateItem(),
+                                ),
                             dragHandle = {
                                 DragHandle(
-                                    onStart = {
-                                        draggingId = reminder.id
-                                        dragOffset = 0f
-                                    },
-                                    onDrag = { delta ->
-                                        dragOffset += delta
-
-                                        // One row's height of travel moves it
-                                        // one place. Measuring real row heights
-                                        // would be exact, but they vary with
-                                        // notes and dates, and a fixed step is
-                                        // steadier under the finger.
-                                        val step = (dragOffset / ROW_HEIGHT_PX).toInt()
-                                        if (step != 0) {
-                                            val target = (index + step)
-                                                .coerceIn(0, arranged.lastIndex)
-                                            if (target != index) {
-                                                arranged = arranged.toMutableList().apply {
-                                                    add(target, removeAt(index))
-                                                }
-                                                dragOffset -= step * ROW_HEIGHT_PX
-                                            }
-                                        }
-                                    },
-                                    onEnd = {
-                                        draggingId = null
-                                        dragOffset = 0f
-                                        viewModel.reorder(arranged.map { it.id })
-                                    },
+                                    onStart = { reorder.start(reminder.id) },
+                                    onDrag = reorder::drag,
+                                    onEnd = reorder::stop,
                                 )
                             },
                         )
@@ -282,38 +295,3 @@ private fun ReminderScope.label(): String = when (this) {
     ReminderScope.Shared -> "Together"
     ReminderScope.Private -> "Just mine"
 }
-
-/**
- * The three lines you press and hold to move a row.
- *
- * Long press rather than a plain drag, so scrolling the list past the handle
- * does not pick a row up by accident.
- */
-@Composable
-private fun DragHandle(
-    onStart: () -> Unit,
-    onDrag: (Float) -> Unit,
-    onEnd: () -> Unit,
-) {
-    Icon(
-        imageVector = Icons.Outlined.DragHandle,
-        contentDescription = "Hold and drag to move this",
-        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier
-            .padding(horizontal = 4.dp)
-            .pointerInput(Unit) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { onStart() },
-                    onDrag = { change, delta ->
-                        change.consume()
-                        onDrag(delta.y)
-                    },
-                    onDragEnd = onEnd,
-                    onDragCancel = onEnd,
-                )
-            },
-    )
-}
-
-/** Roughly one row, used to decide when a drag has crossed into the next slot. */
-private const val ROW_HEIGHT_PX = 190f

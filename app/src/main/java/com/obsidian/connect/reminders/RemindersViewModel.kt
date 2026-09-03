@@ -2,6 +2,7 @@ package com.obsidian.connect.reminders
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.ReminderRepository
@@ -106,8 +107,20 @@ class RemindersViewModel @Inject constructor(
      * writes it down.
      */
     fun reorder(orderedIds: List<String>) {
-        withOwner { scope, ownerId, _ ->
-            reminderRepository.reorder(scope, ownerId, orderedIds)
+        // Ids go stale easily here. A drop lands a moment after the drag began,
+        // and in between the row - or one above it - can be deleted, by you or
+        // by the other person on a shared list. The write is a single batch, so
+        // one id pointing at a document that no longer exists fails the whole
+        // reorder and reports a Firestore path at the user, which is neither
+        // their problem nor anything they can act on.
+        val live = reminders.value.mapTo(mutableSetOf()) { it.id }
+        val ids = orderedIds.filter { it in live }
+        if (ids.isEmpty()) return
+
+        // Quiet on failure. The list is a live query, so a lost race corrects
+        // itself on the next snapshot; there is nothing to tell anyone.
+        withOwner(quiet = true) { scope, ownerId, _ ->
+            reminderRepository.reorder(scope, ownerId, ids)
         }
     }
 
@@ -180,7 +193,10 @@ class RemindersViewModel @Inject constructor(
             ReminderScope.Private -> uid
         }
 
-    private fun withOwner(block: suspend (ReminderScope, String, String) -> Result<*>) {
+    private fun withOwner(
+        quiet: Boolean = false,
+        block: suspend (ReminderScope, String, String) -> Result<*>,
+    ) {
         val scope = _scope.value
         val uid = authRepository.currentUid ?: return
         val ownerId = ownerIdFor(scope, currentUser.value?.pairingId, uid)
@@ -193,11 +209,25 @@ class RemindersViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true) }
             block(scope, ownerId, uid).onFailure { e ->
-                _uiState.update { it.copy(message = e.message ?: "That didn't work") }
+                if (!quiet && !e.isMissingDocument()) {
+                    _uiState.update { it.copy(message = e.message ?: "That didn't work") }
+                }
             }
             _uiState.update { it.copy(busy = false) }
         }
     }
+
+    /**
+     * Acting on something that has already been deleted.
+     *
+     * Always a race rather than a fault: the row was on screen when it was
+     * tapped and gone by the time the write landed, usually because the other
+     * person removed it. The live query puts the list right by itself, so
+     * there is nothing worth interrupting anyone about.
+     */
+    private fun Throwable.isMissingDocument(): Boolean =
+        (this as? FirebaseFirestoreException)?.code ==
+            FirebaseFirestoreException.Code.NOT_FOUND
 
     private companion object {
         const val STOP_TIMEOUT = 5_000L
