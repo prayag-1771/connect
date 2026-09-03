@@ -76,7 +76,10 @@ fun HomeScreen(
     ) { insets ->
         when (tabs[selected]) {
             HomeTab.Capture -> CaptureScreen(modifier = Modifier.padding(insets))
-            HomeTab.Chat -> ChatScreen(modifier = Modifier.padding(insets))
+            // Given the raw insets rather than pre-padded. Chat has to
+            // reconcile them against the keyboard itself; applying both here
+            // leaves a dead gap the height of the navigation bar.
+            HomeTab.Chat -> ChatScreen(contentPadding = insets)
             HomeTab.Draw -> DrawScreen(modifier = Modifier.padding(insets))
             HomeTab.Reminders -> RemindersScreen(modifier = Modifier.padding(insets))
             HomeTab.You -> ProfileScreen(modifier = Modifier.padding(insets))

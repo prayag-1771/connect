@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -65,6 +67,7 @@ import java.util.Locale
 
 @Composable
 fun ChatScreen(
+    contentPadding: PaddingValues = PaddingValues(),
     modifier: Modifier = Modifier,
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
@@ -141,7 +144,21 @@ fun ChatScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize().imePadding()) {
+    // The scaffold reserves room for the bottom navigation bar, and the
+    // keyboard covers that bar when it opens. Adding both leaves a gap the
+    // height of the bar between the input row and the keyboard, so take
+    // whichever is actually taller.
+    val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val barBottom = contentPadding.calculateBottomPadding()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(
+                top = contentPadding.calculateTopPadding(),
+                bottom = maxOf(imeBottom, barBottom),
+            ),
+    ) {
         if (messages.isEmpty()) {
             EmptyConversation(modifier = Modifier.weight(1f))
         } else {
@@ -209,7 +226,7 @@ fun ChatScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp)
-                .padding(bottom = 12.dp),
+                .padding(bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
