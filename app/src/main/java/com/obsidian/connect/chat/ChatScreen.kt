@@ -189,6 +189,9 @@ fun ChatScreen(
     // reference list. Highlighted briefly on arrival so the eye can find it.
     var spotlight by remember { mutableStateOf<String?>(null) }
 
+    // The card the deck should land on when opened from a message about it.
+    var openChoiceId by remember { mutableStateOf<String?>(null) }
+
     var panelOpen by remember { mutableStateOf(false) }
     var chooseOpen by remember { mutableStateOf(false) }
     var panelTab by remember { mutableStateOf(AttachmentTab.Gifs) }
@@ -330,6 +333,10 @@ fun ChatScreen(
                         starred = message.isStarredBy(myUid),
                         status = deliveryStatusOf(message, partnerReceipt),
                         onLongPress = { chosen = message },
+                        onOpenChoice = { id ->
+                            openChoiceId = id
+                            chooseOpen = true
+                        },
                         playing = player.isPlaying(message.id),
                         progress = if (playingId == message.id) playProgress else 0f,
                         onTogglePlay = {
@@ -526,12 +533,16 @@ fun ChatScreen(
 
         if (chooseOpen) {
             ChooseOverlay(
-                onDismiss = { chooseOpen = false },
+                onDismiss = {
+                    chooseOpen = false
+                    openChoiceId = null
+                },
                 onRefer = { card ->
                     referring = card
                     replyingTo = null
                 },
                 onOpenRef = { ref -> spotlight = ref.messageId },
+                focusChoiceId = openChoiceId,
                 bottomInset = barBottom,
             )
         }
@@ -630,6 +641,7 @@ private fun Bubble(
     onTogglePlay: () -> Unit,
     onSeek: (Float) -> Unit,
     onLongPress: () -> Unit,
+    onOpenChoice: (String) -> Unit,
     spotlit: Boolean = false,
 ) {
     Row(
@@ -673,11 +685,18 @@ private fun Bubble(
             if (message.isReply || message.hasChoiceRef) {
                 QuotedStrip(
                     label = when {
-                        message.hasChoiceRef -> "About a card"
+                        message.hasChoiceRef -> "About a card — tap to see it"
                         message.replyToIsPhoto -> "Photo"
                         else -> message.replyToText
                     },
                     mine = mine,
+                    // Only a card can be opened. A quoted message is already
+                    // in the conversation, a few rows up.
+                    onOpen = if (message.hasChoiceRef) {
+                        { onOpenChoice(message.choiceRefId) }
+                    } else {
+                        null
+                    },
                 )
                 Spacer(Modifier.height(6.dp))
             }
@@ -924,10 +943,11 @@ private fun MissingPhoto() {
  * not a second copy of it - anything longer competes with the reply itself.
  */
 @Composable
-private fun QuotedStrip(label: String, mine: Boolean) {
+private fun QuotedStrip(label: String, mine: Boolean, onOpen: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
+            .then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
             .background(
                 if (mine) {
                     MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)

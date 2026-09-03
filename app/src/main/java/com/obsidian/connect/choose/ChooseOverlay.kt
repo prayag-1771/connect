@@ -93,6 +93,14 @@ fun ChooseOverlay(
     onRefer: (Choice) -> Unit = {},
     /** Jump back to a message that was written about a card. */
     onOpenRef: (ChoiceRef) -> Unit = {},
+    /**
+     * A card to land on, from a message written about it.
+     *
+     * The card may be on either side of the deck - a reference in the chat
+     * says nothing about whose option it was - so the tab is chosen here
+     * rather than assumed.
+     */
+    focusChoiceId: String? = null,
     bottomInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
     viewModel: ChooseViewModel = hiltViewModel(),
@@ -112,6 +120,15 @@ fun ChooseOverlay(
 
     var confirmingDelete by remember { mutableStateOf<Choice?>(null) }
     var side by remember { mutableStateOf(ChoiceSide.Mine) }
+
+    // A referenced card can be on either side. Switch to whichever tab holds
+    // it before the deck tries to scroll to it, or it would land on the right
+    // index of the wrong list.
+    LaunchedEffect(focusChoiceId, choices) {
+        val id = focusChoiceId ?: return@LaunchedEffect
+        val card = choices.firstOrNull { it.id == id } ?: return@LaunchedEffect
+        side = if (card.addedBy == myUid) ChoiceSide.Mine else ChoiceSide.Theirs
+    }
 
     val scope = rememberCoroutineScope()
 
@@ -219,6 +236,7 @@ fun ChooseOverlay(
                     onOpenRef(it)
                     onDismiss()
                 },
+                focusChoiceId = focusChoiceId,
                 onPickFromGallery = {
                     picker.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
@@ -337,6 +355,7 @@ private fun Deck(
     onDelete: (Choice) -> Unit,
     onRefer: (Choice) -> Unit,
     onOpenRef: (ChoiceRef) -> Unit,
+    focusChoiceId: String? = null,
     onPickFromGallery: () -> Unit,
     onTakePhoto: () -> Unit,
     modifier: Modifier = Modifier,
@@ -346,6 +365,14 @@ private fun Deck(
     // for. Their deck takes no additions, so it has no trailing card.
     val addPage = if (allowAdding) 1 else 0
     val pagerState = rememberPagerState(pageCount = { choices.size + addPage })
+
+    // Arriving from a message written about one particular card. Keyed on the
+    // list too, because the deck is often still loading when the id arrives.
+    LaunchedEffect(focusChoiceId, choices) {
+        val id = focusChoiceId ?: return@LaunchedEffect
+        val index = choices.indexOfFirst { it.id == id }
+        if (index >= 0) pagerState.scrollToPage(index)
+    }
 
     Column(modifier = modifier) {
         HorizontalPager(
