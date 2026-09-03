@@ -65,6 +65,7 @@ class ConnectSyncWorker @AssistedInject constructor(
         val outcome = runCatching {
             syncWidget(pairingId, partnerId, partnerName)
             syncNudges(pairingId, uid)
+            syncDelivery(pairingId, uid)
             syncUnread(pairingId, uid)
             syncDrawing(pairingId, uid)
         }
@@ -99,6 +100,26 @@ class ConnectSyncWorker @AssistedInject constructor(
         // Delivered and written to disk, so the server has no further use for
         // it. The widget renders from its own stored bitmap from here on.
         if (saved.exists()) momentRepository.clearImage(latest.id)
+    }
+
+    /**
+     * Tells the other person their message arrived.
+     *
+     * The live listener covers this while the process is alive; this covers
+     * the case it cannot - a message that landed while the app was closed and
+     * Android had reclaimed everything. Without it, the sender would sit on
+     * "sent" until the recipient next opened the conversation, at which point
+     * it would jump straight past "reached" to "seen".
+     *
+     * Delivery only. Nobody has looked at anything from inside a worker.
+     */
+    private suspend fun syncDelivery(pairingId: String, uid: String) {
+        val latest = messageRepository.latestFrom(pairingId, uid) ?: return
+        messageRepository.markProgress(
+            pairingId = pairingId,
+            uid = uid,
+            deliveredAtMillis = latest.createdAtMillis,
+        )
     }
 
     /**

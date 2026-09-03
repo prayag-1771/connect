@@ -157,18 +157,35 @@ class WidgetLiveUpdater @Inject constructor(
         pairing()
             .flatMapLatest { current ->
                 if (current == null) {
-                    flowOf(emptyList())
+                    flowOf(null)
                 } else {
                     messageRepository.observeRecent(current.first)
+                        .map { current.first to it }
                 }
             }
-            .collect { recent ->
+            .collect { pair ->
+                val (pairingId, recent) = pair ?: return@collect
                 val uid = authRepository.currentUid ?: return@collect
 
                 val newestFromPartner = recent
                     .filter { it.senderId != uid }
                     .maxOfOrNull { it.createdAtMillis }
                     ?: return@collect
+
+                // Delivered means the message is on this phone, which is true
+                // right now whether or not anyone has the chat open. Without
+                // this the only thing that ever moved a watermark was opening
+                // the conversation - which also marks it seen - so the middle
+                // state could never be reached and a message went straight
+                // from sent to seen.
+                //
+                // Seen is deliberately not touched here. Receiving something
+                // is not reading it.
+                messageRepository.markProgress(
+                    pairingId = pairingId,
+                    uid = uid,
+                    deliveredAtMillis = newestFromPartner,
+                )
 
                 val unread = newestFromPartner > syncState.lastReadMessageAt
 
