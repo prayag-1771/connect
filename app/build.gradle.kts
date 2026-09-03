@@ -41,6 +41,11 @@ android {
             "GIPHY_KEY",
             "\"${keystoreProperties.getProperty("giphyKey") ?: ""}\"",
         )
+        buildConfigField(
+            "String",
+            "YOUTUBE_KEY",
+            "\"${keystoreProperties.getProperty("youtubeKey") ?: ""}\"",
+        )
     }
 
     signingConfigs {

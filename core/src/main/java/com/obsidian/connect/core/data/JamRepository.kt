@@ -32,7 +32,13 @@ class JamRepository @Inject constructor(
 
     fun observe(pairingId: String): Flow<JamSession?> = session(pairingId).asFlow()
 
-    /** Puts a track on, from the beginning, paused until someone starts it. */
+    /**
+     * Puts a track on for both of you, playing.
+     *
+     * Playing rather than cued. Pasting a link is asking for the song, not
+     * asking for it to be lined up - and a player that sits silent after being
+     * handed exactly what to play reads as broken rather than as considerate.
+     */
     suspend fun load(
         pairingId: String,
         uid: String,
@@ -45,7 +51,7 @@ class JamRepository @Inject constructor(
                 "service" to service,
                 "videoId" to videoId,
                 "title" to title,
-                "playing" to false,
+                "playing" to true,
                 "positionMs" to 0L,
                 "byUid" to uid,
                 "updatedAtMillis" to System.currentTimeMillis(),

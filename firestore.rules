@@ -157,6 +157,12 @@ service cloud.firestore {
         allow read, write: if isMember(pairingId);
       }
 
+      // The jam chat, which either person may open, write in or delete. It is
+      // meant to be thrown away, so deletion is not a privilege here.
+      match /jamchat/{document=**} {
+        allow read, write: if isMember(pairingId);
+      }
+
       match /strokes/{strokeId} {
         allow read: if isMember(pairingId);
         allow create: if isMember(pairingId)

@@ -105,6 +105,24 @@ private fun JamScreen(
     val session by viewModel.session.collectAsStateWithLifecycle()
     val problem by viewModel.problem.collectAsStateWithLifecycle()
 
+    val chatViewModel: JamChatViewModel = hiltViewModel()
+    val room by chatViewModel.room.collectAsStateWithLifecycle()
+    val chatMessages by chatViewModel.messages.collectAsStateWithLifecycle()
+
+    // The Spotify lookup needs a context to reach its token store, so it is
+    // handed in rather than the view model growing an Android dependency.
+    LaunchedEffect(spotify) {
+        chatViewModel.spotifySearch = if (!spotify) {
+            null
+        } else {
+            { query ->
+                SpotifyApi.search(context, query).getOrNull()
+                    ?.firstOrNull()
+                    ?.let { it.trackUri to "${it.title} - ${it.artist}" }
+            }
+        }
+    }
+
     var link by remember { mutableStateOf("") }
     var ready by remember { mutableStateOf(false) }
     var localPlaying by remember { mutableStateOf(false) }
@@ -201,7 +219,10 @@ private fun JamScreen(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f),
             )
+            OutlinedButton(onClick = { chatViewModel.start() }) { Text("Jam chat") }
+
             if (session?.isLoaded == true) {
+                Spacer(Modifier.size(8.dp))
                 OutlinedButton(onClick = viewModel::end) { Text("End") }
             }
         }
@@ -305,6 +326,53 @@ private fun JamScreen(
             }
         }
     }
+
+    JamChatLayer(
+        room = room,
+        messages = chatMessages,
+        myUid = chatViewModel.myUid,
+        spotify = spotify,
+        onJoin = chatViewModel::join,
+        onEnd = chatViewModel::end,
+        onSend = { text -> chatViewModel.send(text, spotify) },
+    )
+}
+
+/**
+ * The jam chat, in whichever of its three states it is in.
+ *
+ * Absent, invited, or open. Kept together so the transitions are readable:
+ * every one of them is somebody joining or somebody ending it.
+ */
+@Composable
+private fun JamChatLayer(
+    room: com.obsidian.connect.core.model.JamChatRoom?,
+    messages: List<com.obsidian.connect.core.model.JamChatMessage>,
+    myUid: String?,
+    spotify: Boolean,
+    onJoin: () -> Unit,
+    onEnd: () -> Unit,
+    onSend: (String) -> Unit,
+) {
+    val current = room ?: return
+    if (!current.isLive) return
+    val me = myUid ?: return
+
+    // Invited but not in it yet. Declining ends the room rather than leaving it
+    // open, so nobody is left typing into something never answered.
+    if (current.isWaitingFor(me)) {
+        JamChatInvite(onJoin = onJoin, onDecline = onEnd)
+        return
+    }
+
+    JamChatSheet(
+        messages = messages,
+        myUid = myUid,
+        // Spotify search works on a free account; YouTube needs a key.
+        searchable = spotify || YouTubeSearch.isConfigured,
+        onSend = onSend,
+        onEnd = onEnd,
+    )
 }
 
 /**

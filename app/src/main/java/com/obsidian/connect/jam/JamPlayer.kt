@@ -2,8 +2,11 @@ package com.obsidian.connect.jam
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.util.Log
+import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.webkit.WebChromeClient
 import android.webkit.WebViewClient
 
 /**
@@ -29,7 +32,18 @@ class JamPlayer(
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.mediaPlaybackRequiresUserGesture = false
+
         webViewClient = WebViewClient()
+
+        // Without a WebChromeClient a WebView will not play HTML5 video at all.
+        // It is not optional decoration: the video element needs it to obtain a
+        // surface, and its absence fails silently with a black frame.
+        webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                Log.d(TAG, "player: ${message.message()} @${message.lineNumber()}")
+                return true
+            }
+        }
         addJavascriptInterface(Bridge(), "Android")
         loadDataWithBaseURL(ORIGIN, PAGE, "text/html", "utf-8", null)
     }
@@ -70,6 +84,7 @@ class JamPlayer(
     }
 
     private companion object {
+        const val TAG = "JamPlayer"
         const val ORIGIN = "https://www.youtube.com"
 
         /**
@@ -101,12 +116,22 @@ class JamPlayer(
                       width: '100%',
                       playerVars: {
                         playsinline: 1,
-                        controls: 0,
+                        controls: 1,
                         rel: 0,
-                        modestbranding: 1
+                        modestbranding: 1,
+                        // The API refuses to start when it cannot match the
+                        // embedding origin, and a page loaded from data has
+                        // none unless it is stated here.
+                        origin: 'https://www.youtube.com'
                       },
                       events: {
-                        onReady: function () { Android.ready(); },
+                        onReady: function () {
+                          console.log('player ready');
+                          Android.ready();
+                        },
+                        onError: function (e) {
+                          console.log('player error ' + e.data);
+                        },
                         onStateChange: function (e) {
                           if (e.data === YT.PlayerState.PLAYING) Android.state(true);
                           if (e.data === YT.PlayerState.PAUSED) Android.state(false);
