@@ -62,6 +62,15 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      // Delivery and read watermarks, one document per person.
+      //
+      // Writable only by whoever it belongs to, so nobody can mark their own
+      // messages as read by the other person.
+      match /receipts/{userId} {
+        allow read: if isMember(pairingId);
+        allow write: if isMember(pairingId) && uid() == userId;
+      }
+
       // The shared reminder list. Either person may tick off, edit or remove
       // anything here — that mutual authority is the point of the list.
       match /reminders/{reminderId} {

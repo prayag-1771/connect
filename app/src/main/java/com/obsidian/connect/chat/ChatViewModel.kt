@@ -8,8 +8,10 @@ import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.camera.ImageCompressor
 import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.MessageRepository
+import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.core.model.Message
+import com.obsidian.connect.core.model.Receipt
 import com.obsidian.connect.sync.SyncState
 import com.obsidian.connect.widget.MomentWidgetUpdater
 import com.obsidian.connect.widget.WidgetCaptionStore
@@ -21,6 +23,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -39,6 +42,7 @@ class ChatViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     userRepository: UserRepository,
     private val messageRepository: MessageRepository,
+    private val pairingRepository: PairingRepository,
     private val syncState: SyncState,
 ) : ViewModel() {
 
@@ -83,6 +87,47 @@ class ChatViewModel @Inject constructor(
                     id = messageId,
                 )
             }
+        }
+    }
+
+    private val partnerId: StateFlow<String?> = pairingId
+        .flatMapLatest { id -> if (id == null) flowOf(null) else pairingRepository.observe(id) }
+        .map { it?.partnerOf(authRepository.currentUid.orEmpty()) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+
+    /** Their watermarks, which is what says how far your messages have got. */
+    val partnerReceipt: StateFlow<Receipt?> = combine(pairingId, partnerId) { id, partner ->
+        id to partner
+    }
+        .flatMapLatest { (id, partner) ->
+            if (id == null || partner == null) {
+                flowOf(null)
+            } else {
+                messageRepository.observeReceipt(id, partner)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+
+    /**
+     * Records that this device has the messages, and that they are on screen.
+     *
+     * Both watermarks move together here because the chat being open means both
+     * are true. Delivery is tracked separately in the sync worker, for messages
+     * that arrive while the app is closed.
+     */
+    fun markProgress(messages: List<Message>) {
+        val id = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+        val newest = messages.maxOfOrNull { it.createdAtMillis } ?: return
+
+        viewModelScope.launch {
+            messageRepository.markProgress(
+                pairingId = id,
+                uid = uid,
+                deliveredAtMillis = newest,
+                seenAtMillis = newest,
+            )
         }
     }
 

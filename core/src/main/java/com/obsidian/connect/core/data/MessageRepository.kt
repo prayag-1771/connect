@@ -4,8 +4,10 @@ import com.google.firebase.firestore.Blob
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import com.obsidian.connect.core.FirestorePaths
 import com.obsidian.connect.core.model.Message
+import com.obsidian.connect.core.model.Receipt
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -129,6 +131,53 @@ class MessageRepository @Inject constructor(
             ),
         ).await()
         doc.id
+    }
+
+    private fun receipts(pairingId: String) = firestore
+        .collection(FirestorePaths.PAIRINGS)
+        .document(pairingId)
+        .collection(FirestorePaths.RECEIPTS)
+
+    fun observeReceipt(pairingId: String, uid: String): Flow<Receipt?> =
+        receipts(pairingId).document(uid).asFlow()
+
+    /**
+     * Moves a watermark forward.
+     *
+     * Never backwards: messages can arrive slightly out of order, and an older
+     * one landing later must not undo a receipt already given. Both values are
+     * merged rather than set, so marking delivered does not wipe seen.
+     */
+    suspend fun markProgress(
+        pairingId: String,
+        uid: String,
+        deliveredAtMillis: Long? = null,
+        seenAtMillis: Long? = null,
+    ): Result<Unit> = runCatching {
+        val existing = receipts(pairingId).document(uid).get().await()
+            .toObject(Receipt::class.java)
+
+        val delivered = maxOf(deliveredAtMillis ?: 0L, existing?.deliveredAtMillis ?: 0L)
+        val seen = maxOf(seenAtMillis ?: 0L, existing?.seenAtMillis ?: 0L)
+
+        if (delivered == (existing?.deliveredAtMillis ?: 0L) &&
+            seen == (existing?.seenAtMillis ?: 0L)
+        ) {
+            // Nothing moved. Writing anyway would burn the daily allowance on
+            // every recomposition of an idle conversation.
+            return@runCatching
+        }
+
+        receipts(pairingId).document(uid).set(
+            mapOf(
+                "deliveredAtMillis" to delivered,
+                // Seeing something implies having received it; without this a
+                // message read the instant it arrived could show as seen but
+                // never delivered.
+                "seenAtMillis" to seen,
+            ),
+            SetOptions.merge(),
+        ).await()
     }
 
     /**

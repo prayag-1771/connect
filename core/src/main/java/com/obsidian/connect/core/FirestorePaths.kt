@@ -16,4 +16,7 @@ object FirestorePaths {
      */
     const val REMINDERS = "reminders"
     const val NUDGES = "nudges"
+
+    /** One document per person, holding delivered and seen watermarks. */
+    const val RECEIPTS = "receipts"
 }

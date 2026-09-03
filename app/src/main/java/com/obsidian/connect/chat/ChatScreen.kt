@@ -56,7 +56,9 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.obsidian.connect.core.model.DeliveryStatus
 import com.obsidian.connect.core.model.Message
+import com.obsidian.connect.core.model.deliveryStatusOf
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -84,6 +86,7 @@ fun ChatScreen(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> if (granted) viewModel.startRecording() }
 
+    val partnerReceipt by viewModel.partnerReceipt.collectAsStateWithLifecycle()
     val gifs by viewModel.gifs.collectAsStateWithLifecycle()
     val gifsLoading by viewModel.gifsLoading.collectAsStateWithLifecycle()
     val saved by viewModel.saved.collectAsStateWithLifecycle()
@@ -122,6 +125,7 @@ fun ChatScreen(
     LaunchedEffect(messages.size) {
         viewModel.markRead()
         viewModel.archiveIncoming(messages)
+        viewModel.markProgress(messages)
         if (messages.isEmpty()) return@LaunchedEffect
 
         if (positioned) {
@@ -151,6 +155,7 @@ fun ChatScreen(
                     Bubble(
                         message = message,
                         mine = message.senderId == myUid,
+                        status = deliveryStatusOf(message, partnerReceipt),
                         playing = playingId == message.id,
                         onTogglePlay = {
                             message.audioBytes?.let { bytes ->
@@ -296,6 +301,7 @@ fun ChatScreen(
 private fun Bubble(
     message: Message,
     mine: Boolean,
+    status: DeliveryStatus,
     playing: Boolean,
     onTogglePlay: () -> Unit,
 ) {
@@ -376,13 +382,21 @@ private fun Bubble(
                 )
             }
 
-            if (message.createdAtMillis > 0) {
-                Text(
-                    text = timeFormat.format(Date(message.createdAtMillis)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.align(Alignment.End),
-                )
+            Row(
+                modifier = Modifier.align(Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (message.createdAtMillis > 0) {
+                    Text(
+                        text = timeFormat.format(Date(message.createdAtMillis)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                // Only on your own messages. Showing how far theirs got would
+                // be telling them something they already know.
+                if (mine) DeliveryRail(status = status)
             }
         }
     }
