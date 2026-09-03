@@ -95,6 +95,8 @@ import com.obsidian.connect.core.model.Choice
 import com.obsidian.connect.core.model.DeliveryStatus
 import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.deliveryStatusOf
+import androidx.compose.material.icons.filled.VideoCall
+import com.obsidian.connect.call.CallActivity
 import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.ui.theme.ThemeMode
 import com.obsidian.connect.ui.theme.ChatColors
@@ -316,8 +318,19 @@ fun ChatScreen(
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
+            // Calling on the left, deciding on the right. Two unrelated things,
+            // kept at opposite ends so neither is ever hit by mistake while
+            // reaching for the other.
+            IconButton(onClick = { CallActivity.place(context) }) {
+                Icon(
+                    imageVector = Icons.Filled.VideoCall,
+                    contentDescription = "Video call",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+
             TextButton(onClick = { chooseOpen = true }) {
                 Icon(
                     imageVector = Icons.Outlined.Style,

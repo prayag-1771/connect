@@ -97,6 +97,7 @@ class ConnectApplication : Application(), Configuration.Provider, ImageLoaderFac
         liveScope.launch { widgetLiveUpdater.watchMessages() }
         liveScope.launch { widgetLiveUpdater.watchDrawings() }
         liveScope.launch { widgetLiveUpdater.watchReminderAlarms() }
+        liveScope.launch { widgetLiveUpdater.watchCalls() }
     }
 
     override val workManagerConfiguration: Configuration

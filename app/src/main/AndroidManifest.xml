@@ -50,6 +50,17 @@
 
     <!-- The other person feels a reminder they are not meant to be woken by. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!--
+      A call needs the network state to pick a route, and screen capture needs
+      a foreground service the system can see. The mediaProjection type is
+      separately required from Android 10, and is what makes the persistent
+      "sharing your screen" notification mandatory rather than optional.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <!-- The floating blue indicator. Granted by the user in Settings, not at runtime. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
@@ -150,6 +161,19 @@
         <receiver
             android:name=".widget.ScheduleBoundaryReceiver"
             android:exported="false" />
+
+        <activity
+            android:name=".call.CallActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:label="Call" />
+
+        <service
+            android:name=".call.ScreenShareService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <activity
             android:name=".starred.StarredActivity"

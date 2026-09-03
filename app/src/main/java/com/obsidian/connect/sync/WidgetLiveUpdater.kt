@@ -4,12 +4,15 @@ import android.content.Context
 import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.MessageRepository
 import com.obsidian.connect.core.data.MomentRepository
+import com.obsidian.connect.core.data.CallRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.ReminderRepository
 import com.obsidian.connect.core.data.StrokeRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.alarm.ReminderAlarmScheduler
+import com.obsidian.connect.call.CallActivity
+import com.obsidian.connect.core.model.CallState
 import com.obsidian.connect.core.model.Moment
 import com.obsidian.connect.core.model.ReminderScope
 import com.obsidian.connect.widget.DrawingBubble
@@ -48,6 +51,7 @@ class WidgetLiveUpdater @Inject constructor(
     private val messageRepository: MessageRepository,
     private val strokeRepository: StrokeRepository,
     private val reminderRepository: ReminderRepository,
+    private val callRepository: CallRepository,
     private val syncState: SyncState,
 ) {
 
@@ -101,6 +105,33 @@ class WidgetLiveUpdater @Inject constructor(
                 // Same as the scheduled sync: once it is on disk and on the
                 // widget, the copy in Firestore is erased.
                 if (saved.exists()) momentRepository.clearImage(moment.id)
+            }
+    }
+
+    /**
+     * Answers the door when the other phone calls.
+     *
+     * The call document is the only thing that says a call is happening, and
+     * nothing else is watching it - without this the ringing side would wait
+     * forever for someone who never knew.
+     *
+     * Only rings for calls this phone did not place, and only while the call is
+     * still ringing: an answered call has already been dealt with, on whichever
+     * screen dealt with it.
+     */
+    suspend fun watchCalls() {
+        pairing()
+            .flatMapLatest { current ->
+                if (current == null) flowOf(null) else callRepository.observe(current.first)
+            }
+            .collect { call ->
+                val uid = authRepository.currentUid ?: return@collect
+                if (call == null) return@collect
+                if (call.state != CallState.Ringing) return@collect
+                if (call.isMine(uid)) return@collect
+                if (call.offer.isBlank()) return@collect
+
+                withContext(Dispatchers.Main) { CallActivity.answer(context) }
             }
     }
 

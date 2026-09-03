@@ -142,6 +142,15 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      // The call handshake. Both people read and write it freely: it is a
+      // negotiation, and either side may be the one starting, answering or
+      // hanging up. Nothing sensitive lives here - a session description is
+      // useless to anyone who is not already a member of the pairing, and the
+      // media itself never passes through Firestore at all.
+      match /call/{document=**} {
+        allow read, write: if isMember(pairingId);
+      }
+
       match /strokes/{strokeId} {
         allow read: if isMember(pairingId);
         allow create: if isMember(pairingId)
