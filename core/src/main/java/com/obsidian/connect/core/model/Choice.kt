@@ -2,6 +2,7 @@ package com.obsidian.connect.core.model
 
 import com.google.firebase.firestore.Blob
 import com.google.firebase.firestore.DocumentId
+import com.google.firebase.firestore.Exclude
 import com.google.firebase.firestore.ServerTimestamp
 import java.util.Date
 
@@ -45,6 +46,7 @@ data class Choice(
     val hasImage: Boolean get() = image != null
 
     /** Covers cards added before the flag existed, which still hold bytes. */
+    @get:Exclude
     val isPhoto: Boolean get() = photo || image != null
 
     val isLiked: Boolean get() = verdict > 0

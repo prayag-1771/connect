@@ -9,6 +9,7 @@ import coil.ImageLoaderFactory
 import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import com.obsidian.connect.messaging.Notifications
+import com.obsidian.connect.sync.FastSyncReceiver
 import com.obsidian.connect.sync.SyncScheduler
 import com.obsidian.connect.sync.WidgetLiveUpdater
 import com.obsidian.connect.widget.DrawingBubble
@@ -75,6 +76,10 @@ class ConnectApplication : Application(), Configuration.Provider, ImageLoaderFac
 
         // Flips the watch face over when the active window opens or closes.
         ScheduleBoundaryReceiver.schedule(this)
+
+        // Runs a sync every couple of minutes even with the app closed, which
+        // the fifteen-minute worker on its own cannot.
+        FastSyncReceiver.schedule(this)
 
         // The indicator is a window owned by this process, so it dies with it.
         // If something is still unseen, put it back.

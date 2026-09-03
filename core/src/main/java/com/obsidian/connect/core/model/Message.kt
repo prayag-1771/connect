@@ -1,6 +1,7 @@
 package com.obsidian.connect.core.model
 
 import com.google.firebase.firestore.DocumentId
+import com.google.firebase.firestore.Exclude
 import com.google.firebase.firestore.ServerTimestamp
 import java.util.Date
 
@@ -70,6 +71,7 @@ data class Message(
      * The [image] check covers messages sent before the flag existed, which
      * still hold their bytes.
      */
+    @get:Exclude
     val isPhoto: Boolean get() = photo || image != null
 
     val hasAudio: Boolean get() = audio != null

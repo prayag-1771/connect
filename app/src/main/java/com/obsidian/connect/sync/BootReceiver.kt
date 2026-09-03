@@ -23,5 +23,6 @@ class BootReceiver : BroadcastReceiver() {
         SyncScheduler.now(context)
         // Alarms do not survive a reboot.
         ScheduleBoundaryReceiver.schedule(context)
+        FastSyncReceiver.schedule(context)
     }
 }
