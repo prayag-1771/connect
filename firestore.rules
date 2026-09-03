@@ -62,6 +62,20 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      // Options put up for the other person to judge.
+      //
+      // Either member may delete one — an option withdrawn or a decision made
+      // should be clearable by whoever is looking at it. The verdict field is
+      // not restricted to the non-author: enforcing that in rules would need a
+      // read of the existing document on every vote, and voting on your own
+      // option is a pointless act rather than a harmful one.
+      match /choices/{choiceId} {
+        allow read: if isMember(pairingId);
+        allow create: if isMember(pairingId)
+          && request.resource.data.addedBy == uid();
+        allow update, delete: if isMember(pairingId);
+      }
+
       // Delivery and read watermarks, one document per person.
       //
       // Writable only by whoever it belongs to, so nobody can mark their own

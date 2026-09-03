@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.GifBox
+import androidx.compose.material.icons.outlined.Style
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +41,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -58,6 +62,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.obsidian.connect.choose.ChooseOverlay
 import com.obsidian.connect.core.model.DeliveryStatus
 import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.deliveryStatusOf
@@ -95,6 +100,7 @@ fun ChatScreen(
     val saved by viewModel.saved.collectAsStateWithLifecycle()
 
     var panelOpen by remember { mutableStateOf(false) }
+    var chooseOpen by remember { mutableStateOf(false) }
     var panelTab by remember { mutableStateOf(AttachmentTab.Gifs) }
     var gifQuery by remember { mutableStateOf("") }
 
@@ -151,14 +157,34 @@ fun ChatScreen(
     val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
     val barBottom = contentPadding.calculateBottomPadding()
 
+    Box(modifier = modifier.fillMaxSize()) {
+
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .padding(
                 top = contentPadding.calculateTopPadding(),
                 bottom = maxOf(imeBottom, barBottom),
-            ),
+            )
+            // Blurred behind the deck. A no-op below API 31, which is why the
+            // overlay carries its own scrim rather than relying on this.
+            .then(if (chooseOpen) Modifier.blur(18.dp) else Modifier),
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End,
+        ) {
+            TextButton(onClick = { chooseOpen = true }) {
+                Icon(
+                    imageVector = Icons.Outlined.Style,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text("  Choose for me")
+            }
+        }
+
         if (messages.isEmpty()) {
             EmptyConversation(modifier = Modifier.weight(1f))
         } else {
@@ -313,6 +339,11 @@ fun ChatScreen(
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }
             }
+        }
+    }
+
+        if (chooseOpen) {
+            ChooseOverlay(onDismiss = { chooseOpen = false })
         }
     }
 }

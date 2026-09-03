@@ -19,4 +19,7 @@ object FirestorePaths {
 
     /** One document per person, holding delivered and seen watermarks. */
     const val RECEIPTS = "receipts"
+
+    /** Options one person is deciding between, for the other to weigh in on. */
+    const val CHOICES = "choices"
 }
