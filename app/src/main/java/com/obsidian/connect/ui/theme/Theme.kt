@@ -38,7 +38,7 @@ private val LightColors = lightColorScheme(
 
 @Composable
 fun ConnectTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = AppearanceStore.themeMode.isDark(isSystemInDarkTheme()),
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -51,4 +51,17 @@ fun ConnectTheme(
     }
 
     MaterialTheme(colorScheme = colors, content = content)
+}
+
+/**
+ * Whether this mode means dark, given what the phone itself is set to.
+ *
+ * Read as a Compose state, so flipping the switch repaints every screen that
+ * is currently composed rather than only the next one opened.
+ */
+@Composable
+fun ThemeMode.isDark(systemDark: Boolean): Boolean = when (this) {
+    ThemeMode.System -> systemDark
+    ThemeMode.Light -> false
+    ThemeMode.Dark -> true
 }

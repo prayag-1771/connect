@@ -66,11 +66,21 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.members == [uid()];
 
-      // The only permitted update is a second person joining. Members can be
-      // added but never removed or replaced, so nobody can evict a partner.
-      allow update: if signedIn()
-        && resource.data.members.size() == 1
-        && request.resource.data.members == resource.data.members.concat([uid()]);
+      // Two permitted updates, and nothing else.
+      //
+      // A second person joining: members can be added but never removed or
+      // replaced, so nobody can evict a partner. Or a member repainting the
+      // chat, which changes that one field and no other - in particular it can
+      // never be a way to rewrite the member list.
+      allow update: if signedIn() && (
+        (
+          resource.data.members.size() == 1
+          && request.resource.data.members == resource.data.members.concat([uid()])
+        ) || (
+          isMember(pairingId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['chatTheme'])
+        )
+      );
 
       allow delete: if isMember(pairingId);
 

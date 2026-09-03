@@ -96,6 +96,10 @@ import com.obsidian.connect.core.model.DeliveryStatus
 import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.deliveryStatusOf
 import com.obsidian.connect.archive.PhotoArchive
+import com.obsidian.connect.ui.theme.ThemeMode
+import com.obsidian.connect.ui.theme.ChatColors
+import com.obsidian.connect.ui.theme.AppearanceStore
+import androidx.compose.foundation.isSystemInDarkTheme
 import com.obsidian.connect.viewer.PhotoViewerActivity
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -173,6 +177,9 @@ fun ChatScreen(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> if (granted) viewModel.startRecording() }
 
+    val chatTheme by viewModel.chatTheme.collectAsStateWithLifecycle()
+    val palette = chatTheme.colors(isSystemInDarkTheme() || AppearanceStore.themeMode == ThemeMode.Dark)
+
     val partnerReceipt by viewModel.partnerReceipt.collectAsStateWithLifecycle()
     val gifs by viewModel.gifs.collectAsStateWithLifecycle()
     val gifsLoading by viewModel.gifsLoading.collectAsStateWithLifecycle()
@@ -249,6 +256,14 @@ fun ChatScreen(
     // of the oldest messages every time the tab opened. Reversed, the list
     // starts where it should and never has to move.
     val ordered = remember(messages) { messages.asReversed() }
+
+    // A message asked for from the starred list, which is a different screen
+    // and cannot reach in here directly.
+    LaunchedEffect(ChatFocus.pendingMessageId) {
+        val wanted = ChatFocus.pendingMessageId ?: return@LaunchedEffect
+        spotlight = wanted
+        ChatFocus.consume()
+    }
 
     // Walking a reference back to the message it points at.
     //
@@ -334,7 +349,10 @@ fun ChatScreen(
                     Bubble(
                         message = message,
                         mine = message.senderId == myUid,
-                        starred = message.isStarredBy(myUid),
+                        // Either person's star shows for both. Something one
+                        // of you kept is kept.
+                        starred = message.starredBy.isNotEmpty(),
+                        palette = palette,
                         status = deliveryStatusOf(message, partnerReceipt),
                         onLongPress = { chosen = message },
                         onOpenChoice = { id ->
@@ -674,6 +692,7 @@ private fun Bubble(
     onSeek: (Float) -> Unit,
     onLongPress: () -> Unit,
     onOpenChoice: (String) -> Unit,
+    palette: ChatColors?,
     spotlit: Boolean = false,
 ) {
     Row(
@@ -698,8 +717,9 @@ private fun Bubble(
                         // Briefly lifted when arrived at from a card's
                         // reference list, so the eye lands on the right one.
                         spotlit -> MaterialTheme.colorScheme.tertiaryContainer
-                        mine -> MaterialTheme.colorScheme.primaryContainer
-                        else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                        mine -> palette?.mine ?: MaterialTheme.colorScheme.primaryContainer
+                        else -> palette?.theirs
+                            ?: MaterialTheme.colorScheme.surfaceContainerHighest
                     },
                     shape = RoundedCornerShape(
                         topStart = 18.dp,

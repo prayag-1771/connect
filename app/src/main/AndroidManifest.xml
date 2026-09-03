@@ -151,6 +151,11 @@
             android:name=".widget.ScheduleBoundaryReceiver"
             android:exported="false" />
 
+        <activity
+            android:name=".starred.StarredActivity"
+            android:exported="false"
+            android:label="Starred" />
+
         <receiver
             android:name=".sync.FastSyncReceiver"
             android:exported="false" />

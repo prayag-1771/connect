@@ -2,6 +2,11 @@ package com.obsidian.connect.profile
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import com.obsidian.connect.starred.StarredActivity
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -92,6 +97,46 @@ fun ProfileScreen(
         }
 
         AppLockCard()
+
+        val chatTheme by viewModel.chatTheme.collectAsStateWithLifecycle()
+        val paired by viewModel.paired.collectAsStateWithLifecycle()
+        val profileContext = LocalContext.current
+
+        AppearanceCard(
+            chatTheme = chatTheme,
+            onChatTheme = viewModel::setChatTheme,
+            canChangeChat = paired,
+        )
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { StarredActivity.open(profileContext) }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                )
+                Spacer(Modifier.size(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Starred messages", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = "Everything either of you kept",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
 
         WatchScheduleCard()
 

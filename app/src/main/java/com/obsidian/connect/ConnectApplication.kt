@@ -10,6 +10,7 @@ import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import com.obsidian.connect.messaging.Notifications
 import com.obsidian.connect.sync.FastSyncReceiver
+import com.obsidian.connect.ui.theme.AppearanceStore
 import com.obsidian.connect.sync.SyncScheduler
 import com.obsidian.connect.sync.WidgetLiveUpdater
 import com.obsidian.connect.widget.DrawingBubble
@@ -65,6 +66,10 @@ class ConnectApplication : Application(), Configuration.Provider, ImageLoaderFac
 
     override fun onCreate() {
         super.onCreate()
+        // Read before anything paints, or the first frame flashes the wrong
+        // theme on the way to the right one.
+        AppearanceStore.init(this)
+
         // Has to exist before the first nudge lands. A notification naming a
         // channel that was never created is dropped without a trace.
         Notifications.ensureChannels(this)

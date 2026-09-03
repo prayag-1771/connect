@@ -9,6 +9,7 @@ import com.obsidian.connect.core.FirestorePaths
 import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.Receipt
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -147,6 +148,22 @@ class MessageRepository @Inject constructor(
                 .update("image", FieldValue.delete())
                 .await()
         }
+
+    /**
+     * Everything either of you has kept.
+     *
+     * Queried by the two uids rather than by "starred at all", because
+     * Firestore cannot ask whether an array is non-empty. Ordering is done on
+     * the device: adding orderBy to an array query needs a composite index,
+     * and a couple of hundred kept messages sort in no time.
+     */
+    fun observeStarred(pairingId: String, uids: List<String>): Flow<List<Message>> {
+        if (uids.isEmpty()) return flowOf(emptyList())
+        return messages(pairingId)
+            .whereArrayContainsAny("starredBy", uids.take(ARRAY_QUERY_CAP))
+            .limit(PAGE_SIZE)
+            .asFlow()
+    }
 
     /**
      * Stars or unstars a message for one person.
@@ -336,5 +353,8 @@ class MessageRepository @Inject constructor(
 
         /** Kept tiny — this one is held open continuously. */
         const val RECENT_WATCH = 3L
+
+        /** Firestore's own ceiling on arrayContainsAny; two people never reach it. */
+        const val ARRAY_QUERY_CAP = 10
     }
 }

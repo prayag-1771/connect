@@ -25,6 +25,12 @@ class PairingRepository @Inject constructor(
         pairings.document(pairingId).get().await().toObject(Pairing::class.java)
 
     /** Opens a pairing with one member and a code for the other person to enter. */
+    /** Repaints the conversation for both people. */
+    suspend fun setChatTheme(pairingId: String, theme: String): Result<Unit> =
+        runCatching {
+            pairings.document(pairingId).update("chatTheme", theme).await()
+        }
+
     suspend fun createInvite(uid: String): Result<Pairing> = runCatching {
         val code = generateInviteCode()
         val doc = pairings.document()

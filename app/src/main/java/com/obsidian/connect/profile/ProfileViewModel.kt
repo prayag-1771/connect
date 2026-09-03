@@ -7,6 +7,7 @@ import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.sync.SyncState
+import com.obsidian.connect.ui.theme.ChatTheme
 import com.obsidian.connect.widget.MomentWidgetUpdater
 import com.obsidian.connect.widget.WidgetCaptionStore
 import com.obsidian.connect.widget.WidgetImageStore
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -43,6 +45,29 @@ class ProfileViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(ProfileState())
     val state: StateFlow<ProfileState> = _state.asStateFlow()
+
+    private val pairingIdFlow = authRepository.uidFlow
+        .flatMapLatest { uid -> if (uid == null) flowOf(null) else userRepository.observe(uid) }
+        .map { it?.pairingId }
+        .distinctUntilChanged()
+
+    /** The conversation's palette, shared with the other person. */
+    val chatTheme: StateFlow<ChatTheme> = pairingIdFlow
+        .flatMapLatest { id -> if (id == null) flowOf(null) else pairingRepository.observe(id) }
+        .map { ChatTheme.from(it?.chatTheme.orEmpty()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), ChatTheme.Default)
+
+    val paired: StateFlow<Boolean> = pairingIdFlow
+        .map { it != null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), false)
+
+    /** Repaints the chat for both of you. */
+    fun setChatTheme(theme: ChatTheme) {
+        viewModelScope.launch {
+            val id = pairingIdFlow.first() ?: return@launch
+            pairingRepository.setChatTheme(id, theme.name)
+        }
+    }
 
     val myName: StateFlow<String> = authRepository.uidFlow
         .flatMapLatest { uid -> if (uid == null) flowOf(null) else userRepository.observe(uid) }

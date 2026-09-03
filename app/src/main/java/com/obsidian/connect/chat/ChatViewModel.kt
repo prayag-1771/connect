@@ -16,6 +16,7 @@ import com.obsidian.connect.core.model.ChoiceRef
 import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.Receipt
 import com.obsidian.connect.sync.SyncState
+import com.obsidian.connect.ui.theme.ChatTheme
 import com.obsidian.connect.widget.MomentWidgetUpdater
 import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -118,6 +119,17 @@ class ChatViewModel @Inject constructor(
         .map { it?.partnerOf(authRepository.currentUid.orEmpty()) }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+
+    /**
+     * The conversation's look, as chosen by whichever of you last changed it.
+     *
+     * Read from the pairing rather than from this device, so repainting the
+     * chat repaints it for both.
+     */
+    val chatTheme: StateFlow<ChatTheme> = pairingId
+        .flatMapLatest { id -> if (id == null) flowOf(null) else pairingRepository.observe(id) }
+        .map { ChatTheme.from(it?.chatTheme.orEmpty()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), ChatTheme.Default)
 
     /** Their watermarks, which is what says how far your messages have got. */
     val partnerReceipt: StateFlow<Receipt?> = combine(pairingId, partnerId) { id, partner ->

@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.obsidian.connect.chat.ChatFocus
 import com.obsidian.connect.chat.ChatScreen
 import com.obsidian.connect.draw.DrawScreen
 import com.obsidian.connect.profile.ProfileScreen
@@ -57,6 +58,12 @@ fun HomeScreen(
     // brings you back here after you have navigated elsewhere in between.
     LaunchedEffect(requestId) {
         requestedTab?.let { selected = tabs.indexOf(it) }
+    }
+
+    // Coming back from the starred list, which asked for a particular message.
+    // The chat clears the request itself once it has scrolled to it.
+    LaunchedEffect(ChatFocus.pendingMessageId) {
+        if (ChatFocus.pendingMessageId != null) selected = tabs.indexOf(HomeTab.Chat)
     }
 
     Scaffold(
