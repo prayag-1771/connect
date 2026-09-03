@@ -54,6 +54,14 @@ import java.util.Date
 @Composable
 fun ReminderEditorSheet(
     initial: Reminder?,
+    /**
+     * Whether this list has two people in it.
+     *
+     * The call-ringtone switch only means anything on the shared list. On a
+     * private one there is no second phone to ring, so offering the choice
+     * would be offering nothing.
+     */
+    sharedList: Boolean,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
@@ -168,7 +176,7 @@ fun ReminderEditorSheet(
             // Only offered once there is a time to ring at. A switch that
             // silently does nothing because the reminder has no deadline is
             // worse than one that is not there.
-            if (hasTime) {
+            if (hasTime && sharedList) {
                 ContactAlarmRow(
                     enabled = contactAlarm,
                     onChange = { contactAlarm = it },
@@ -178,7 +186,16 @@ fun ReminderEditorSheet(
             Spacer(Modifier.height(4.dp))
 
             Button(
-                onClick = { onSave(title, note, dueAt, hasTime, priority, contactAlarm && hasTime) },
+                onClick = {
+                    onSave(
+                        title,
+                        note,
+                        dueAt,
+                        hasTime,
+                        priority,
+                        contactAlarm && hasTime && sharedList,
+                    )
+                },
                 enabled = title.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {

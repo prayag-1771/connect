@@ -4,6 +4,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DragHandle
@@ -14,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -153,8 +157,24 @@ fun rememberReorderState(
     onSettled: () -> Unit,
 ): ReorderState {
     val scope = rememberCoroutineScope()
+
+    // Held by reference, not by value.
+    //
+    // The list being reordered is rebuilt every time the query re-emits, and
+    // the callbacks are rebuilt with it - they close over a state object that
+    // no longer exists a moment later. Captured once, a drag would go on
+    // writing into a list nothing was reading any more, which looks exactly
+    // like a row that refuses to move.
+    val move by rememberUpdatedState(onMove)
+    val settled by rememberUpdatedState(onSettled)
+
     return remember(listState) {
-        ReorderState(listState, scope, onMove, onSettled)
+        ReorderState(
+            listState = listState,
+            scope = scope,
+            onMove = { from, to -> move(from, to) },
+            onSettled = { settled() },
+        )
     }
 }
 
@@ -170,22 +190,37 @@ fun DragHandle(
     onDrag: (Float) -> Unit,
     onEnd: () -> Unit,
 ) {
-    Icon(
-        imageVector = Icons.Outlined.DragHandle,
-        contentDescription = "Hold and drag to move this",
-        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+    // pointerInput(Unit) never restarts, so whatever it captures on the first
+    // composition is what it keeps forever. These have to be read through a
+    // holder or the gesture ends up calling into a dead composition.
+    val start by rememberUpdatedState(onStart)
+    val drag by rememberUpdatedState(onDrag)
+    val end by rememberUpdatedState(onEnd)
+
+    Box(
+        // A finger is about nine millimetres across and the icon is twenty-four
+        // density pixels. The grab area has to be bigger than the drawing.
         modifier = Modifier
-            .padding(horizontal = 4.dp)
+            .size(48.dp)
             .pointerInput(Unit) {
                 detectDragGesturesAfterLongPress(
-                    onDragStart = { onStart() },
+                    onDragStart = { start() },
                     onDrag = { change, delta ->
+                        // Consumed so the list underneath scrolls instead of
+                        // fighting the drag for the same finger.
                         change.consume()
-                        onDrag(delta.y)
+                        drag(delta.y)
                     },
-                    onDragEnd = onEnd,
-                    onDragCancel = onEnd,
+                    onDragEnd = { end() },
+                    onDragCancel = { end() },
                 )
             },
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.DragHandle,
+            contentDescription = "Hold and drag to move this",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -54,10 +55,21 @@ class RemindersViewModel @Inject constructor(
         .map { it?.pairingId }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
 
-    val partnerId: StateFlow<String?> = pairingId
+    private val partnerIdFlow = pairingId
         .flatMapLatest { id -> if (id == null) flowOf(null) else pairingRepository.observe(id) }
         .map { it?.partnerOf(authRepository.currentUid.orEmpty()) }
+        .distinctUntilChanged()
+
+    val partnerId: StateFlow<String?> = partnerIdFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+
+    /** Their name, for saying whose a shared task is without spelling out a uid. */
+    val partnerName: StateFlow<String> = partnerIdFlow
+        .flatMapLatest { id -> if (id == null) flowOf(null) else userRepository.observe(id) }
+        .map { it?.displayName.orEmpty().ifBlank { "Them" } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), "Them")
+
+    val myUid: String? get() = authRepository.currentUid
 
     val reminders: StateFlow<List<Reminder>> =
         combine(_scope, currentUser) { scope, user -> scope to user }
@@ -242,5 +254,14 @@ class RemindersViewModel @Inject constructor(
  * afterwards is a list nobody trusts.
  */
 private fun List<Reminder>.sortedForDisplay(): List<Reminder> = sortedWith(
-    compareBy<Reminder> { it.done }.thenByDescending { it.orderIndex },
+    // Finished items sink. Above them, the next thing due comes first - which
+    // is the question a list like this is usually being asked.
+    compareBy<Reminder> { it.done }
+        // Undated items after dated ones. Something with no deadline is not
+        // urgent by omission, and floating it to the top would say it was.
+        .thenBy { it.dueAt == null }
+        .thenBy { it.dueAt?.time ?: Long.MAX_VALUE }
+        // Hand-arranged position breaks ties: among things due at the same
+        // time, or among the undated, the order you put them in still holds.
+        .thenByDescending { it.orderIndex },
 )

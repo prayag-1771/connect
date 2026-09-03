@@ -57,6 +57,8 @@ fun RemindersScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pairingId by viewModel.pairingId.collectAsStateWithLifecycle()
     val partnerId by viewModel.partnerId.collectAsStateWithLifecycle()
+    val partnerName by viewModel.partnerName.collectAsStateWithLifecycle()
+    val myUid = viewModel.myUid
 
     val snackbarHostState = remember { SnackbarHostState() }
     var editing by remember { mutableStateOf<EditorTarget?>(null) }
@@ -130,6 +132,12 @@ fun RemindersScreen(
                     items(items = arranged, key = { it.id }) { reminder ->
                         val dragging = reorder.isDragging(reminder.id)
 
+                        // Read here rather than inside the graphicsLayer block.
+                        // In the block it is only reached when the row is being
+                        // dragged, so on the composition where the drag starts
+                        // there is nothing subscribed to it yet.
+                        val translation = if (dragging) reorder.offset else 0f
+
                         // Lifts as it is picked up, so a held row reads as
                         // detached from the list rather than merely tinted.
                         val lift by animateFloatAsState(
@@ -142,6 +150,13 @@ fun RemindersScreen(
                             // Only worth offering on the shared list, and only
                             // when there is actually someone on the other end.
                             canNudge = scope == ReminderScope.Shared && partnerId != null,
+                            // Only on the shared list. On a private one every
+                            // row would say the same thing.
+                            ownerLabel = if (scope == ReminderScope.Shared) {
+                                if (reminder.createdBy == myUid) "You" else partnerName
+                            } else {
+                                null
+                            },
                             onToggle = { viewModel.toggle(reminder) },
                             onNudge = { viewModel.nudge(reminder) },
                             onDelete = { viewModel.delete(reminder) },
@@ -151,7 +166,7 @@ fun RemindersScreen(
                                 // passes over them rather than through them.
                                 .zIndex(lift)
                                 .graphicsLayer {
-                                    translationY = if (dragging) reorder.offset else 0f
+                                    translationY = translation
                                     val scale = 1f + 0.03f * lift
                                     scaleX = scale
                                     scaleY = scale
@@ -186,6 +201,7 @@ fun RemindersScreen(
 
         EditorTarget.New -> ReminderEditorSheet(
             initial = null,
+            sharedList = scope == ReminderScope.Shared,
             onDismiss = { editing = null },
             onSave = { title, note, dueAt, hasTime, priority, contactAlarm ->
                 viewModel.add(title, note, dueAt, hasTime, priority, contactAlarm)
@@ -195,6 +211,7 @@ fun RemindersScreen(
 
         is EditorTarget.Existing -> ReminderEditorSheet(
             initial = target.reminder,
+            sharedList = scope == ReminderScope.Shared,
             onDismiss = { editing = null },
             onSave = { title, note, dueAt, hasTime, priority, contactAlarm ->
                 viewModel.edit(target.reminder, title, note, dueAt, hasTime, priority, contactAlarm)

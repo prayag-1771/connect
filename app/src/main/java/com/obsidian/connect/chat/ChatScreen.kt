@@ -55,6 +55,7 @@ import androidx.compose.material.icons.outlined.HideImage
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.IconButton
@@ -191,6 +192,9 @@ fun ChatScreen(
 
     // The card the deck should land on when opened from a message about it.
     var openChoiceId by remember { mutableStateOf<String?>(null) }
+
+    // Held between choosing to delete and confirming it.
+    var confirmingDelete by remember { mutableStateOf<Message?>(null) }
 
     var panelOpen by remember { mutableStateOf(false) }
     var chooseOpen by remember { mutableStateOf(false) }
@@ -559,10 +563,38 @@ fun ChatScreen(
                 chosen = null
             },
             onDelete = {
-                viewModel.delete(message)
+                // Close the sheet first, so the question is not asked from
+                // underneath the thing that asked it.
                 chosen = null
+                confirmingDelete = message
             },
             onDismiss = { chosen = null },
+        )
+    }
+
+    confirmingDelete?.let { message ->
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = null },
+            title = { Text("Delete this message?") },
+            text = {
+                Text(
+                    "It goes from both phones, and there is no undo. " +
+                        "Any photo already saved to this phone stays in your photos.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.delete(message)
+                        confirmingDelete = null
+                    },
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDelete = null }) { Text("Keep it") }
+            },
         )
     }
 }
@@ -683,13 +715,32 @@ private fun Bubble(
             // The quote sits inside the bubble, above what was actually said,
             // so an answer and the thing it answers read as one block.
             if (message.isReply || message.hasChoiceRef) {
+                val quoteContext = LocalContext.current
+
+                // The card's own picture, off this phone's disk.
+                //
+                // Both sides archive a card under its id when it is added or
+                // received, so the image is already here - no listener, no
+                // fetch, and nothing kept on the server to fetch from. Saying
+                // which card in words is a poor substitute for showing it.
+                val cardThumb = remember(message.choiceRefId) {
+                    if (!message.hasChoiceRef) {
+                        null
+                    } else {
+                        PhotoArchive.bytesFor(quoteContext, message.choiceRefId)
+                            ?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+                            ?.asImageBitmap()
+                    }
+                }
+
                 QuotedStrip(
                     label = when {
-                        message.hasChoiceRef -> "About a card — tap to see it"
+                        message.hasChoiceRef -> "About this card — tap to open"
                         message.replyToIsPhoto -> "Photo"
                         else -> message.replyToText
                     },
                     mine = mine,
+                    thumbnail = cardThumb,
                     // Only a card can be opened. A quoted message is already
                     // in the conversation, a few rows up.
                     onOpen = if (message.hasChoiceRef) {
@@ -943,7 +994,12 @@ private fun MissingPhoto() {
  * not a second copy of it - anything longer competes with the reply itself.
  */
 @Composable
-private fun QuotedStrip(label: String, mine: Boolean, onOpen: (() -> Unit)? = null) {
+private fun QuotedStrip(
+    label: String,
+    mine: Boolean,
+    thumbnail: androidx.compose.ui.graphics.ImageBitmap? = null,
+    onOpen: (() -> Unit)? = null,
+) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
@@ -965,6 +1021,19 @@ private fun QuotedStrip(label: String, mine: Boolean, onOpen: (() -> Unit)? = nu
                 .fillMaxHeight()
                 .background(MaterialTheme.colorScheme.primary),
         )
+
+        thumbnail?.let {
+            Image(
+                bitmap = it,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .padding(start = 6.dp)
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(6.dp)),
+            )
+        }
+
         Text(
             text = label.ifBlank { "Message" },
             style = MaterialTheme.typography.bodySmall,

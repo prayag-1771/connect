@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,6 +41,13 @@ import com.obsidian.connect.core.model.Reminder
 fun ReminderRow(
     reminder: Reminder,
     canNudge: Boolean,
+    /**
+     * Who put this on the list, or null on a private one.
+     *
+     * Nothing is said on a list with one person in it - labelling every row
+     * "You" is noise that never distinguishes anything.
+     */
+    ownerLabel: String? = null,
     onToggle: () -> Unit,
     onNudge: () -> Unit,
     onDelete: () -> Unit,
@@ -65,8 +73,16 @@ fun ReminderRow(
     // separate themselves from the list without needing to be read. Kept pale
     // deliberately — a row that shouts is no use in a list where several rows
     // might be shouting at once.
+    // Mixed against the row's normal colour rather than being a fixed value.
+    // A literal dark red was almost black against a light theme - the tint has
+    // to be derived from whatever the surface actually is, not guessed.
+    val plain = MaterialTheme.colorScheme.surfaceContainerLow
     val background by animateColorAsState(
-        targetValue = if (dueToday) DUE_TODAY else MaterialTheme.colorScheme.surfaceContainerLow,
+        targetValue = if (dueToday) {
+            lerp(plain, MaterialTheme.colorScheme.errorContainer, DUE_TODAY_TINT)
+        } else {
+            plain
+        },
         label = "rowBackground",
     )
 
@@ -141,7 +157,20 @@ fun ReminderRow(
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
                         )
+
+                        ownerLabel?.let {
+                            // On the same line as the date rather than a line
+                            // of its own. Both answer "when and whose", and a
+                            // third line per row would make the list twice as
+                            // tall for one word.
+                            Spacer(Modifier.size(8.dp))
+                            OwnerTag(it)
+                        }
                     }
+                } ?: ownerLabel?.let {
+                    // Undated, so it needs a line of its own after all.
+                    Spacer(Modifier.height(2.dp))
+                    OwnerTag(it)
                 }
             }
 
@@ -185,5 +214,24 @@ private fun priorityColour(priority: Priority, done: Boolean): Color = when {
     else -> Color(0xFF5B9BD5)
 }
 
-/** Pale enough to sit under text, red enough to mean today. */
-private val DUE_TODAY = Color(0xFF3A2224)
+/** Just enough red to catch the eye, nowhere near enough to fight the text. */
+private const val DUE_TODAY_TINT = 0.28f
+
+/**
+ * Whose task this is, said quietly.
+ *
+ * A tinted pill rather than plain text - at this size a name reads as part of
+ * the note otherwise, and the whole value of it is being separable at a glance.
+ */
+@Composable
+private fun OwnerTag(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSecondaryContainer,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+    )
+}
