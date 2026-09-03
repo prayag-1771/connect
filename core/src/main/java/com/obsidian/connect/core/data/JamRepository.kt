@@ -1,5 +1,7 @@
 package com.obsidian.connect.core.data
 
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.FirebaseFirestore
 import com.obsidian.connect.core.FirestorePaths
 import com.obsidian.connect.core.model.JamSession
@@ -54,8 +56,15 @@ class JamRepository @Inject constructor(
                 "playing" to true,
                 "positionMs" to 0L,
                 "byUid" to uid,
+                // Whoever puts a track on is listening to it. Also guards the
+                // case where this is the first write and nobody has joined yet.
+                "listeners" to FieldValue.arrayUnion(uid),
                 "updatedAtMillis" to System.currentTimeMillis(),
             ),
+            // Merge, not replace. A plain set wiped the listener list on every
+            // new track, which took every phone straight back out of the jam it
+            // had just joined - and silenced the one that started it.
+            SetOptions.merge(),
         ).await()
     }
 
@@ -79,7 +88,7 @@ class JamRepository @Inject constructor(
                 "byUid" to uid,
                 "updatedAtMillis" to System.currentTimeMillis(),
             ),
-            com.google.firebase.firestore.SetOptions.merge(),
+            SetOptions.merge(),
         ).await()
     }
 
@@ -91,15 +100,15 @@ class JamRepository @Inject constructor(
      */
     suspend fun join(pairingId: String, uid: String): Result<Unit> = runCatching {
         session(pairingId).set(
-            mapOf("listeners" to com.google.firebase.firestore.FieldValue.arrayUnion(uid)),
-            com.google.firebase.firestore.SetOptions.merge(),
+            mapOf("listeners" to FieldValue.arrayUnion(uid)),
+            SetOptions.merge(),
         ).await()
     }
 
     suspend fun leave(pairingId: String, uid: String): Result<Unit> = runCatching {
         session(pairingId).set(
-            mapOf("listeners" to com.google.firebase.firestore.FieldValue.arrayRemove(uid)),
-            com.google.firebase.firestore.SetOptions.merge(),
+            mapOf("listeners" to FieldValue.arrayRemove(uid)),
+            SetOptions.merge(),
         ).await()
     }
 

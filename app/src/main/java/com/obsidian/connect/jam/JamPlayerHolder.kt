@@ -3,6 +3,8 @@ package com.obsidian.connect.jam
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
+import android.util.Log
+import android.view.Gravity
 import android.view.WindowManager
 import com.obsidian.connect.widget.DrawingBubble
 
@@ -13,14 +15,12 @@ import com.obsidian.connect.widget.DrawingBubble
  * cannot belong to the jam screen - anything owned by a composable dies with
  * it. It lives here instead, for as long as the track does.
  *
- * It is attached to a one-pixel window rather than left floating unattached.
- * A WebView with no window does not reliably play media at all: the platform
- * treats it as off-screen and stops giving it a surface. One transparent pixel
- * in the corner is the cheapest way to stay legitimately on screen.
+ * It is attached to a small, near-transparent window rather than left floating
+ * unattached. A WebView with no window is never given a surface, and one too
+ * small to see is treated as invisible and suspended - both end in silence.
  *
- * That also settles what the jam screen shows. There is no video to display
- * anywhere, because the thing playing it is a pixel - which is the right
- * arrangement for music, where the picture was never the point.
+ * That also settles what the jam screen shows: nothing. The picture was never
+ * the point for music, and there is no longer anywhere it could appear.
  */
 object JamPlayerHolder {
 
@@ -42,6 +42,19 @@ object JamPlayerHolder {
     var loadedVideoId: String = ""
         private set
 
+    /**
+     * A track asked for before the page could take it.
+     *
+     * Creating the WebView and calling into it are not the same moment: the
+     * page takes a few hundred milliseconds to fetch its script and define
+     * anything. Commands sent in that window hit a document with no functions
+     * in it and vanish with a ReferenceError - the player then sits perfectly
+     * ready, having been told nothing.
+     */
+    private var pending: Pending? = null
+
+    private data class Pending(val videoId: String, val startMs: Long, val play: Boolean)
+
     fun ensure(context: Context): JamPlayer {
         player?.let { return it }
 
@@ -50,6 +63,11 @@ object JamPlayerHolder {
             context = app,
             onReady = {
                 isReady = true
+                // Whatever was asked for while the page was still loading.
+                pending?.let { queued ->
+                    pending = null
+                    player?.load(queued.videoId, queued.startMs, queued.play)
+                }
                 onReady?.invoke()
             },
             onStateChange = { playing -> onStateChange?.invoke(playing) },
@@ -66,44 +84,85 @@ object JamPlayerHolder {
     }
 
     /**
-     * One transparent pixel, top-left, behind everything.
+     * A real rectangle, in a corner, almost completely transparent.
      *
-     * NOT_FOCUSABLE and NOT_TOUCHABLE so it can never take a tap or a keyboard
-     * from whatever is actually on screen.
+     * It was one pixel at first, and that is exactly why the sound stopped:
+     * Chromium suspends a video element it considers invisible, and a
+     * one-by-one surface counts as invisible. It has to have genuine size and
+     * genuine visibility to keep decoding, so it gets both - and an alpha low
+     * enough that nobody will ever notice it.
+     *
+     * NOT_FOCUSABLE and NOT_TOUCHABLE so it can never take a tap or the
+     * keyboard from whatever is actually on screen.
      */
     private fun attach(context: Context, created: JamPlayer) {
         if (attached) return
-        if (!DrawingBubble.canShow(context)) return
+
+        if (!DrawingBubble.canShow(context)) {
+            Log.w(TAG, "no overlay permission, jam cannot play off-screen")
+            return
+        }
 
         val windows = context.getSystemService(WindowManager::class.java) ?: return
         val params = WindowManager.LayoutParams(
-            1,
-            1,
+            WIDTH_PX,
+            HEIGHT_PX,
             overlayType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT,
-        )
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            alpha = INVISIBLE_ENOUGH
+        }
 
         runCatching { windows.addView(created.view, params) }
-            .onSuccess { attached = true }
+            .onSuccess {
+                attached = true
+                Log.d(TAG, "player attached")
+            }
+            .onFailure { Log.w(TAG, "player could not attach: ${it.message}") }
     }
 
     fun load(context: Context, videoId: String, startMs: Long, play: Boolean) {
         val active = ensure(context)
         loadedVideoId = videoId
-        active.load(videoId, startMs, play)
+
+        if (isReady) {
+            active.load(videoId, startMs, play)
+        } else {
+            pending = Pending(videoId, startMs, play)
+        }
     }
 
-    fun play(context: Context) = ensure(context).play()
+    /**
+     * Nothing is sent before the page can receive it.
+     *
+     * A play or a pause that arrives early is dropped rather than queued: by
+     * the time the page is ready the session will have been applied in full,
+     * and replaying a stale instruction on top of it would fight that.
+     */
+    fun play(context: Context) {
+        val active = ensure(context)
+        if (isReady) active.play() else pending = pending?.copy(play = true)
+    }
 
-    fun pause(context: Context) = ensure(context).pause()
+    fun pause(context: Context) {
+        val active = ensure(context)
+        if (isReady) active.pause() else pending = pending?.copy(play = false)
+    }
 
-    fun seekTo(context: Context, positionMs: Long) = ensure(context).seekTo(positionMs)
+    fun seekTo(context: Context, positionMs: Long) {
+        val active = ensure(context)
+        if (isReady) active.seekTo(positionMs)
+    }
 
-    fun requestPosition(context: Context) = ensure(context).requestPosition()
+    fun requestPosition(context: Context) {
+        val active = ensure(context)
+        if (isReady) active.requestPosition()
+    }
 
-    /** Ends the jam and takes the pixel back. */
+    /** Ends the jam and takes the window back. */
     fun release(context: Context) {
         val current = player ?: return
         runCatching {
@@ -116,9 +175,19 @@ object JamPlayerHolder {
         player = null
         attached = false
         isReady = false
+        pending = null
         loadedVideoId = ""
         lastPositionMs = 0L
     }
+
+    private const val TAG = "JamPlayerHolder"
+
+    /** Big enough that Chromium treats it as a real, visible player. */
+    private const val WIDTH_PX = 320
+    private const val HEIGHT_PX = 180
+
+    /** Visible to the compositor, invisible to a person. */
+    private const val INVISIBLE_ENOUGH = 0.02f
 
     private fun overlayType(): Int =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
