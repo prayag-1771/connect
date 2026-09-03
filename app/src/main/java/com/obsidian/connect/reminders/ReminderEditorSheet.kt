@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -21,16 +22,20 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -38,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.obsidian.connect.core.model.Reminder
+import java.util.Calendar
 import java.util.Date
 
 /**
@@ -48,14 +54,17 @@ import java.util.Date
 fun ReminderEditorSheet(
     initial: Reminder?,
     onDismiss: () -> Unit,
-    onSave: (title: String, note: String, dueAt: Date?) -> Unit,
+    onSave: (title: String, note: String, dueAt: Date?, hasTime: Boolean, priority: Int) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var title by remember { mutableStateOf(initial?.title.orEmpty()) }
     var note by remember { mutableStateOf(initial?.note.orEmpty()) }
     var dueAt by remember { mutableStateOf(initial?.dueAt) }
+    var hasTime by remember { mutableStateOf(initial?.dueHasTime ?: false) }
+    var priority by remember { mutableIntStateOf(initial?.priorityValue ?: 1) }
     var pickingDate by remember { mutableStateOf(false) }
+    var pickingTime by remember { mutableStateOf(false) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -116,23 +125,65 @@ fun ReminderEditorSheet(
                                 contentDescription = "Remove the date",
                                 modifier = Modifier
                                     .size(18.dp)
-                                    .clickableNoRipple { dueAt = null },
+                                    .clickableNoRipple {
+                                        dueAt = null
+                                        hasTime = false
+                                    },
                             )
+                        },
+                    )
+
+                    // Only offered once there is a date. A time on its own has
+                    // nothing to be a time on.
+                    InputChip(
+                        selected = hasTime,
+                        onClick = { pickingTime = true },
+                        label = { Text(if (hasTime) timeLabel(due) else "Add a time") },
+                        trailingIcon = if (!hasTime) null else {
+                            {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "Remove the time",
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clickableNoRipple { hasTime = false },
+                                )
+                            }
                         },
                     )
                 }
             }
 
+            PriorityRow(selected = priority, onSelect = { priority = it })
+
             Spacer(Modifier.height(4.dp))
 
             Button(
-                onClick = { onSave(title, note, dueAt) },
+                onClick = { onSave(title, note, dueAt, hasTime, priority) },
                 enabled = title.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(if (initial == null) "Add it" else "Save")
             }
         }
+    }
+
+    if (pickingTime) {
+        val due = dueAt ?: Date()
+        TimeOfDayDialog(
+            initial = due,
+            onDismiss = { pickingTime = false },
+            onConfirm = { hour, minute ->
+                dueAt = Calendar.getInstance().apply {
+                    time = due
+                    set(Calendar.HOUR_OF_DAY, hour)
+                    set(Calendar.MINUTE, minute)
+                    set(Calendar.SECOND, 0)
+                }.time
+                hasTime = true
+                pickingTime = false
+            },
+        )
     }
 
     if (pickingDate) {
@@ -154,6 +205,52 @@ fun ReminderEditorSheet(
             DatePicker(state = pickerState)
         }
     }
+}
+
+/**
+ * Low, medium, high — the only three steps anyone actually distinguishes
+ * between when they are writing a list rather than running a project.
+ */
+@Composable
+private fun PriorityRow(selected: Int, onSelect: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(0 to "Low", 1 to "Medium", 2 to "High").forEach { (value, label) ->
+            FilterChip(
+                selected = selected == value,
+                onClick = { onSelect(value) },
+                label = { Text(label) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimeOfDayDialog(
+    initial: Date,
+    onDismiss: () -> Unit,
+    onConfirm: (hour: Int, minute: Int) -> Unit,
+) {
+    val calendar = Calendar.getInstance().apply { time = initial }
+    val state = rememberTimePickerState(
+        initialHour = calendar.get(Calendar.HOUR_OF_DAY),
+        initialMinute = calendar.get(Calendar.MINUTE),
+        is24Hour = true,
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { onConfirm(state.hour, state.minute) }) { Text("Set") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        text = { TimePicker(state = state) },
+    )
+}
+
+private fun timeLabel(date: Date): String = Calendar.getInstance().run {
+    time = date
+    "%02d:%02d".format(get(Calendar.HOUR_OF_DAY), get(Calendar.MINUTE))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

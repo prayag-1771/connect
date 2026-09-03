@@ -10,10 +10,15 @@ import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import com.obsidian.connect.messaging.Notifications
 import com.obsidian.connect.sync.SyncScheduler
+import com.obsidian.connect.sync.WidgetLiveUpdater
 import com.obsidian.connect.widget.DrawingBubble
 import com.obsidian.connect.widget.ScheduleBoundaryReceiver
 import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -41,6 +46,22 @@ class ConnectApplication : Application(), Configuration.Provider, ImageLoaderFac
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
 
+    @Inject lateinit var widgetLiveUpdater: WidgetLiveUpdater
+
+    /**
+     * Lives as long as the process does, which is the point.
+     *
+     * These listeners used to hang off the root screen's ViewModel, so they
+     * were torn down the moment the activity went away — which is precisely
+     * when the widget most needs them. Backgrounding the app dropped every
+     * live update onto the fifteen-minute worker, and that is what made a new
+     * photo take so long to reach the watch face.
+     *
+     * SupervisorJob so one listener failing does not silently take the others
+     * down with it.
+     */
+    private val liveScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     override fun onCreate() {
         super.onCreate()
         // Has to exist before the first nudge lands. A notification naming a
@@ -58,6 +79,13 @@ class ConnectApplication : Application(), Configuration.Provider, ImageLoaderFac
         // The indicator is a window owned by this process, so it dies with it.
         // If something is still unseen, put it back.
         if (WidgetCaptionStore.hasNewDrawing(this)) DrawingBubble.show(this)
+
+        // Closes the gap the worker's fifteen-minute floor leaves, for as long
+        // as this process is alive — which outlasts the visible app by a good
+        // deal.
+        liveScope.launch { widgetLiveUpdater.watchMoments() }
+        liveScope.launch { widgetLiveUpdater.watchMessages() }
+        liveScope.launch { widgetLiveUpdater.watchDrawings() }
     }
 
     override val workManagerConfiguration: Configuration

@@ -47,6 +47,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +69,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.obsidian.connect.core.model.Choice
 import com.obsidian.connect.editor.EditPhotoContract
+import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.viewer.PhotoViewerActivity
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
@@ -91,6 +93,14 @@ fun ChooseOverlay(
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val myUid = viewModel.myUid
     val context = LocalContext.current
+
+    // Keyed on how many cards still carry their bytes, not on the list itself.
+    // Filing one clears its photo, which produces another snapshot — keying on
+    // the list would restart this on its own result. This count only falls to
+    // zero and stays there until something new actually arrives.
+    LaunchedEffect(choices.count { it.hasImage }) {
+        viewModel.archiveIncoming(choices)
+    }
 
     var confirmingDelete by remember { mutableStateOf<Choice?>(null) }
     var side by remember { mutableStateOf(ChoiceSide.Mine) }
@@ -396,19 +406,25 @@ private fun ChoiceCard(
             color = MaterialTheme.colorScheme.surface,
         ) {
             Column {
-                val bitmap = remember(choice.id) {
-                    choice.bytes?.let {
+                val cardContext = LocalContext.current
+
+                // The document first, this phone's own copy second — the bytes
+                // only stay online long enough to arrive.
+                val bytes = remember(choice.id) {
+                    choice.bytes ?: PhotoArchive.bytesFor(cardContext, choice.id)
+                }
+                val bitmap = remember(bytes) {
+                    bytes?.let {
                         BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap()
                     }
                 }
 
-                val cardContext = LocalContext.current
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
                         .clickable {
-                            choice.bytes?.let { PhotoViewerActivity.open(cardContext, it) }
+                            bytes?.let { PhotoViewerActivity.open(cardContext, it) }
                         },
                 ) {
                     bitmap?.let {

@@ -287,27 +287,41 @@ class ChatViewModel @Inject constructor(
     }
 
     /**
-     * Files any photos the other person sent into the archive.
+     * Files any photos the other person sent, then takes them off the server.
      *
-     * Done as they are read rather than on receipt, because messages arrive
-     * through a listener that has no other reason to touch disk. Saving is
-     * idempotent, so re-reading the conversation costs nothing.
+     * This is the whole transfer-only idea in one place. A photo goes up only
+     * far enough to reach the other phone; the moment this device has written
+     * its own copy, the copy in Firestore is erased and every later read comes
+     * off local disk. Nothing of yours accumulates online.
+     *
+     * The order is not negotiable — save first, clear second. Clearing a photo
+     * this phone had not managed to write would destroy it outright, and there
+     * is no second copy anywhere to recover it from.
+     *
+     * Saving is idempotent, so re-reading the conversation costs nothing.
      */
     fun archiveIncoming(messages: List<Message>) {
+        val id = pairingId.value ?: return
         val uid = authRepository.currentUid ?: return
         val incoming = messages.filter { it.senderId != uid && it.hasImage }
         if (incoming.isEmpty()) return
 
         viewModelScope.launch(Dispatchers.IO) {
             incoming.forEach { message ->
-                message.bytes?.let {
+                val bytes = message.bytes ?: return@forEach
+
+                val saved = runCatching {
                     PhotoArchive.save(
                         context = context,
-                        jpeg = it,
+                        jpeg = bytes,
                         origin = PhotoArchive.Origin.Received,
                         id = message.id,
                         takenAtMillis = message.createdAtMillis,
                     )
+                }.getOrNull()
+
+                if (saved?.exists() == true) {
+                    messageRepository.clearImage(id, message.id)
                 }
             }
         }

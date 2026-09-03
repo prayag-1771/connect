@@ -18,6 +18,18 @@ data class Message(
     val image: com.google.firebase.firestore.Blob? = null,
 
     /**
+     * Whether this message was sent as a photo, regardless of whether the bytes
+     * are still here.
+     *
+     * Needed because the bytes are deliberately temporary: once both phones
+     * have written their own copy, [image] is erased from the document. Without
+     * a flag that outlives it, a delivered photo would be indistinguishable
+     * from an empty message, and the bubble would have nothing to look for on
+     * disk.
+     */
+    val photo: Boolean = false,
+
+    /**
      * A voice note, carried the same way.
      *
      * Audio suits this far better than video does: a minute of AAC mono at
@@ -48,7 +60,17 @@ data class Message(
 
     @ServerTimestamp val createdAt: Date? = null,
 ) {
+    /** The bytes are here, in this document, right now. */
     val hasImage: Boolean get() = image != null
+
+    /**
+     * This message is a photo — whether it still carries one or has already
+     * been handed over to local storage.
+     *
+     * The [image] check covers messages sent before the flag existed, which
+     * still hold their bytes.
+     */
+    val isPhoto: Boolean get() = photo || image != null
 
     val hasAudio: Boolean get() = audio != null
 

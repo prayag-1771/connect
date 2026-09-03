@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.UserRepository
-import com.obsidian.connect.sync.WidgetLiveUpdater
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,16 +32,7 @@ class RootViewModel @Inject constructor(
     authRepository: AuthRepository,
     userRepository: UserRepository,
     private val pairingRepository: PairingRepository,
-    widgetLiveUpdater: WidgetLiveUpdater,
 ) : ViewModel() {
-
-    init {
-        // Closes the gap the fifteen-minute periodic worker leaves. While the
-        // app is open these listeners cost nothing extra, so photos and
-        // drawings register in near real time instead of on the next sync.
-        viewModelScope.launch { widgetLiveUpdater.watchMoments() }
-        viewModelScope.launch { widgetLiveUpdater.watchDrawings() }
-    }
 
     /**
      * Derived from live data rather than tracked as navigation state, so the

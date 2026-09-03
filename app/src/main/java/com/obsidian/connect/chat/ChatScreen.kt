@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.GifBox
 import androidx.compose.material.icons.outlined.Style
+import androidx.compose.material.icons.outlined.HideImage
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,6 +75,7 @@ import kotlinx.coroutines.launch
 import com.obsidian.connect.core.model.DeliveryStatus
 import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.deliveryStatusOf
+import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.viewer.PhotoViewerActivity
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -475,29 +477,43 @@ private fun Bubble(
                 )
                 .padding(horizontal = 14.dp, vertical = 9.dp),
         ) {
-            if (message.hasImage) {
+            if (message.isPhoto) {
+                val bubbleContext = LocalContext.current
+
+                // The document first, this phone's own copy second.
+                //
+                // A photo only stays in Firestore long enough to arrive; after
+                // that the bytes are erased and the archive is the only place
+                // it exists. Reading the blob first still matters for the brief
+                // window before the receiving phone has filed it away.
+                //
                 // Decoded once per message rather than on every recomposition,
                 // which matters in a list that scrolls.
-                val bitmap = remember(message.id) {
-                    message.bytes?.let {
+                val bytes = remember(message.id) {
+                    message.bytes ?: PhotoArchive.bytesFor(bubbleContext, message.id)
+                }
+                val bitmap = remember(bytes) {
+                    bytes?.let {
                         BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap()
                     }
                 }
-                bitmap?.let {
-                    val bubbleContext = LocalContext.current
+
+                if (bitmap != null && bytes != null) {
                     Image(
-                        bitmap = it,
+                        bitmap = bitmap,
                         contentDescription = "Photo, tap to open",
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .widthIn(max = 240.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                message.bytes?.let { bytes ->
-                                    PhotoViewerActivity.open(bubbleContext, bytes)
-                                }
-                            },
+                            .clickable { PhotoViewerActivity.open(bubbleContext, bytes) },
                     )
+                } else {
+                    // Delivered to a phone that no longer has it — reinstalled,
+                    // cleared, or a second device that was never the one this
+                    // photo was handed to. Saying so is better than an empty
+                    // bubble that looks like a bug.
+                    MissingPhoto()
                 }
             }
 
@@ -532,7 +548,7 @@ private fun Bubble(
                     } else {
                         MaterialTheme.colorScheme.onSurface
                     },
-                    modifier = Modifier.padding(top = if (message.hasImage) 6.dp else 0.dp),
+                    modifier = Modifier.padding(top = if (message.isPhoto) 6.dp else 0.dp),
                 )
             }
 
@@ -657,3 +673,33 @@ private fun EmptyConversation(modifier: Modifier = Modifier) {
 }
 
 private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+/**
+ * Stands in for a photo this phone does not have.
+ *
+ * Photos are transferred rather than hosted, so there is no copy to fetch back
+ * — this is a statement of fact, not a failed load worth retrying.
+ */
+@Composable
+private fun MissingPhoto() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .widthIn(max = 240.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 12.dp, vertical = 14.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.HideImage,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = "Photo isn't on this phone",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}

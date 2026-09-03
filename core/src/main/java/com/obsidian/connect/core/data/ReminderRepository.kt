@@ -39,13 +39,16 @@ class ReminderRepository @Inject constructor(
         }
 
     /**
-     * Ordered by creation only. Sorting by done-then-due would need a composite
-     * index per list, and these lists are small enough that ordering them for
-     * display is better done in the view model.
+     * Ordered by manual position.
+     *
+     * Sorting by done, then priority, then due, then position would need a
+     * composite index per list for a handful of rows. The one field the query
+     * needs is the one a person can rearrange; the rest is done for display in
+     * the view model.
      */
     fun observe(scope: ReminderScope, ownerId: String): Flow<List<Reminder>> =
         collection(scope, ownerId)
-            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .orderBy("orderIndex", Query.Direction.DESCENDING)
             .asFlow()
 
     suspend fun add(
@@ -54,6 +57,8 @@ class ReminderRepository @Inject constructor(
         title: String,
         note: String = "",
         dueAt: Date? = null,
+        dueHasTime: Boolean = false,
+        priorityValue: Int = 1,
         createdBy: String,
     ): Result<String> = runCatching {
         val doc = collection(scope, ownerId).document()
@@ -63,6 +68,11 @@ class ReminderRepository @Inject constructor(
                 put("note", note.trim())
                 put("done", false)
                 put("createdBy", createdBy)
+                put("priorityValue", priorityValue)
+                put("dueHasTime", dueHasTime)
+                // Creation time doubles as the initial position, so a new item
+                // lands at the top without renumbering anything below it.
+                put("orderIndex", System.currentTimeMillis())
                 put("createdAt", FieldValue.serverTimestamp())
                 dueAt?.let { put("dueAt", it) }
             },
@@ -95,6 +105,8 @@ class ReminderRepository @Inject constructor(
         title: String,
         note: String,
         dueAt: Date?,
+        dueHasTime: Boolean = false,
+        priorityValue: Int = 1,
     ): Result<Unit> = runCatching {
         collection(scope, ownerId).document(reminderId).update(
             mapOf(
@@ -103,8 +115,38 @@ class ReminderRepository @Inject constructor(
                 // Explicit null rather than omitting the key, so clearing a due
                 // date actually removes it instead of leaving the old one.
                 "dueAt" to dueAt,
+                "dueHasTime" to dueHasTime,
+                "priorityValue" to priorityValue,
             ),
         ).await()
+    }
+
+    /**
+     * Writes a new manual order for the whole list.
+     *
+     * Renumbers everything rather than trying to slot one item between its
+     * neighbours. A list this size is a single batch, and gap-based ordering
+     * eventually runs out of room between two adjacent values anyway.
+     *
+     * Descending values, so the first id ends up at the top.
+     */
+    suspend fun reorder(
+        scope: ReminderScope,
+        ownerId: String,
+        orderedIds: List<String>,
+    ): Result<Unit> = runCatching {
+        if (orderedIds.isEmpty()) return@runCatching
+
+        val base = System.currentTimeMillis()
+        firestore.runBatch { batch ->
+            orderedIds.forEachIndexed { index, id ->
+                batch.update(
+                    collection(scope, ownerId).document(id),
+                    "orderIndex",
+                    base - index,
+                )
+            }
+        }.await()
     }
 
     suspend fun delete(

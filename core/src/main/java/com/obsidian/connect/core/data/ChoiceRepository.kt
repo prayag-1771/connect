@@ -45,6 +45,8 @@ class ChoiceRepository @Inject constructor(
             mapOf(
                 "addedBy" to addedBy,
                 "image" to Blob.fromBytes(jpeg),
+                // Outlives the bytes, which are erased once delivered.
+                "photo" to true,
                 "note" to note.trim(),
                 "verdict" to 0,
                 "verdictBy" to "",
@@ -76,6 +78,20 @@ class ChoiceRepository @Inject constructor(
         ).await()
     }
 
+    /**
+     * Drops the photo out of a card once the other phone has it.
+     *
+     * The card itself has to stay — it is still being voted on, and the verdict
+     * is the reason it exists. Only the picture moves off the server, to be
+     * read from each phone's own copy from then on.
+     */
+    suspend fun clearImage(pairingId: String, choiceId: String): Result<Unit> =
+        runCatching {
+            choices(pairingId).document(choiceId)
+                .update("image", FieldValue.delete())
+                .await()
+        }
+
     suspend fun delete(pairingId: String, choiceId: String): Result<Unit> = runCatching {
         choices(pairingId).document(choiceId).delete().await()
     }
@@ -86,6 +102,6 @@ class ChoiceRepository @Inject constructor(
          * database at 1GiB. A decision worth making rarely has fifty options.
          */
         const val MAX_CHOICES = 40L
-        const val MAX_IMAGE_BYTES = 700 * 1024
+        const val MAX_IMAGE_BYTES = 900 * 1024
     }
 }

@@ -34,6 +34,24 @@ class MessageRepository @Inject constructor(
             .limitToLast(limit)
             .asFlow()
 
+    /**
+     * A live view of just the newest few messages.
+     *
+     * Deliberately not [observe]. That one carries two hundred documents, and
+     * any of them may still be holding a photo — fine for a conversation you
+     * are looking at, far too heavy for a listener whose only question is
+     * whether anything new has arrived.
+     *
+     * Three is enough: the answer is about the newest message from the other
+     * person, and a couple of your own replies on top of it is the worst
+     * realistic case.
+     */
+    fun observeRecent(pairingId: String, limit: Long = RECENT_WATCH): Flow<List<Message>> =
+        messages(pairingId)
+            .orderBy("createdAtMillis", Query.Direction.DESCENDING)
+            .limit(limit)
+            .asFlow()
+
     suspend fun send(pairingId: String, senderId: String, text: String): Result<Unit> =
         runCatching {
             val trimmed = text.trim()
@@ -71,12 +89,32 @@ class MessageRepository @Inject constructor(
                 "senderId" to senderId,
                 "text" to caption.trim().take(MAX_LENGTH),
                 "image" to Blob.fromBytes(jpeg),
+                // Outlives the bytes, which are erased once delivered.
+                "photo" to true,
                 "createdAtMillis" to System.currentTimeMillis(),
                 "createdAt" to FieldValue.serverTimestamp(),
             ),
         ).await()
         doc.id
     }
+
+    /**
+     * Drops the photo out of a message once both phones hold it.
+     *
+     * The document stays: the conversation still needs to know a photo was sent
+     * here, at this moment, by this person. Only the bytes go — and they go as
+     * soon as the receiving phone has written its own copy, so the server holds
+     * a photo for the length of one delivery rather than for good.
+     *
+     * Failure is deliberately quiet. The archive copy is already safe, and the
+     * worst case is a blob that lingers until the next read retries this.
+     */
+    suspend fun clearImage(pairingId: String, messageId: String): Result<Unit> =
+        runCatching {
+            messages(pairingId).document(messageId)
+                .update("image", FieldValue.delete())
+                .await()
+        }
 
     /**
      * Sends a voice note.
@@ -219,12 +257,15 @@ class MessageRepository @Inject constructor(
         const val MAX_LENGTH = 2000
 
         /** Firestore caps a document at 1MiB; this leaves room for the rest. */
-        const val MAX_IMAGE_BYTES = 700 * 1024
+        const val MAX_IMAGE_BYTES = 900 * 1024
 
         /** Past this the dot is on either way; no point counting further. */
         const val UNREAD_CAP = 50L
 
         /** Enough to find the other person's last message in any real exchange. */
         const val RECENT_LOOKBACK = 15L
+
+        /** Kept tiny — this one is held open continuously. */
+        const val RECENT_WATCH = 3L
     }
 }

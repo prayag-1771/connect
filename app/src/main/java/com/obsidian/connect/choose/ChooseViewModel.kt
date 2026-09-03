@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.camera.ImageCompressor
 import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.ChoiceRepository
@@ -80,8 +81,49 @@ class ChooseViewModel @Inject constructor(
 
         viewModelScope.launch {
             _busy.value = true
-            choiceRepository.add(id, uid, jpeg)
+            choiceRepository.add(id, uid, jpeg).onSuccess { choiceId ->
+                // Kept here from the outset, because the copy in Firestore is
+                // erased as soon as the other phone has it.
+                withContext(Dispatchers.IO) {
+                    PhotoArchive.save(context, jpeg, PhotoArchive.Origin.Sent, choiceId)
+                }
+            }
             _busy.value = false
+        }
+    }
+
+    /**
+     * Files the other person's cards, then takes the photos off the server.
+     *
+     * Same bargain as the chat: a picture is uploaded only far enough to reach
+     * this phone, and once it is on disk here the copy online is erased. The
+     * card itself stays — it is still being voted on.
+     *
+     * Save first, clear second. Erasing a photo this phone had failed to write
+     * would destroy the only remaining copy of it.
+     */
+    fun archiveIncoming(choices: List<Choice>) {
+        val id = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+        val incoming = choices.filter { it.addedBy != uid && it.hasImage }
+        if (incoming.isEmpty()) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            incoming.forEach { choice ->
+                val bytes = choice.bytes ?: return@forEach
+
+                val saved = runCatching {
+                    PhotoArchive.save(
+                        context = context,
+                        jpeg = bytes,
+                        origin = PhotoArchive.Origin.Received,
+                        id = choice.id,
+                        takenAtMillis = choice.createdAtMillis,
+                    )
+                }.getOrNull()
+
+                if (saved?.exists() == true) choiceRepository.clearImage(id, choice.id)
+            }
         }
     }
 

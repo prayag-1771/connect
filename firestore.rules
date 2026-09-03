@@ -19,6 +19,18 @@ service cloud.firestore {
       return signedIn() && uid() in membersOf(pairingId);
     }
 
+    // A photo being handed back after delivery.
+    //
+    // The whole point of the transfer-only model: once both phones hold a
+    // picture, the copy on the server is removed and nothing else about the
+    // document may change with it. Locking the shape this tightly means the
+    // permission to erase a photo can never become a permission to rewrite who
+    // sent it or when.
+    function onlyDropsImage() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['image'])
+        && !('image' in request.resource.data);
+    }
+
     match /users/{userId} {
       // Readable by any signed-in user so a partner can show your name and
       // avatar. Nothing sensitive lives on this document beyond the FCM token,
@@ -59,7 +71,10 @@ service cloud.firestore {
         allow read: if isMember(pairingId);
         allow create: if isMember(pairingId)
           && request.resource.data.senderId == uid();
-        allow update, delete: if false;
+        // The only edit a message allows is losing its photo to the recipient's
+        // phone. Text is still permanent — you cannot revise what you said.
+        allow update: if isMember(pairingId) && onlyDropsImage();
+        allow delete: if false;
       }
 
       // Options put up for the other person to judge.
@@ -119,7 +134,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.senderId == uid()
         && isMember(request.resource.data.pairingId);
-      allow update: if false;
+      allow update: if isMember(resource.data.pairingId) && onlyDropsImage();
       allow delete: if isMember(resource.data.pairingId);
     }
   }

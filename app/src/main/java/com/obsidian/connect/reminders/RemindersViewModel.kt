@@ -74,7 +74,13 @@ class RemindersViewModel @Inject constructor(
         _scope.value = scope
     }
 
-    fun add(title: String, note: String, dueAt: Date?) {
+    fun add(
+        title: String,
+        note: String,
+        dueAt: Date?,
+        dueHasTime: Boolean,
+        priorityValue: Int,
+    ) {
         if (title.isBlank()) return
         withOwner { scope, ownerId, uid ->
             reminderRepository.add(
@@ -83,8 +89,23 @@ class RemindersViewModel @Inject constructor(
                 title = title,
                 note = note,
                 dueAt = dueAt,
+                dueHasTime = dueHasTime,
+                priorityValue = priorityValue,
                 createdBy = uid,
             )
+        }
+    }
+
+    /**
+     * Persists a hand-arranged order.
+     *
+     * The list is already showing the new arrangement by the time this runs —
+     * the drag reorders locally so the item follows the finger. This only
+     * writes it down.
+     */
+    fun reorder(orderedIds: List<String>) {
+        withOwner { scope, ownerId, _ ->
+            reminderRepository.reorder(scope, ownerId, orderedIds)
         }
     }
 
@@ -94,9 +115,25 @@ class RemindersViewModel @Inject constructor(
         }
     }
 
-    fun edit(reminder: Reminder, title: String, note: String, dueAt: Date?) {
+    fun edit(
+        reminder: Reminder,
+        title: String,
+        note: String,
+        dueAt: Date?,
+        dueHasTime: Boolean,
+        priorityValue: Int,
+    ) {
         withOwner { scope, ownerId, _ ->
-            reminderRepository.edit(scope, ownerId, reminder.id, title, note, dueAt)
+            reminderRepository.edit(
+                scope = scope,
+                ownerId = ownerId,
+                reminderId = reminder.id,
+                title = title,
+                note = note,
+                dueAt = dueAt,
+                dueHasTime = dueHasTime,
+                priorityValue = priorityValue,
+            )
         }
     }
 
@@ -164,14 +201,12 @@ class RemindersViewModel @Inject constructor(
 }
 
 /**
- * Outstanding items first, soonest due at the top, undated ones after those,
- * and everything finished pushed to the bottom.
+ * Finished items to the bottom; everything else in the order it was arranged.
  *
- * Done in memory rather than in the query: ordering by done then due then
- * created would need a composite index per list, for a handful of rows.
+ * Manual position wins over due date and priority on purpose. Someone who has
+ * dragged an item somewhere means it, and a list that quietly re-sorts itself
+ * afterwards is a list nobody trusts.
  */
 private fun List<Reminder>.sortedForDisplay(): List<Reminder> = sortedWith(
-    compareBy<Reminder> { it.done }
-        .thenBy { it.dueAt?.time ?: Long.MAX_VALUE }
-        .thenByDescending { it.createdAt?.time ?: 0L },
+    compareBy<Reminder> { it.done }.thenByDescending { it.orderIndex },
 )

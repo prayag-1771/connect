@@ -82,7 +82,7 @@ class ConnectSyncWorker @AssistedInject constructor(
         if (latest.id == syncState.lastMomentId) return
 
         val bytes = latest.bytes ?: return
-        PhotoArchive.save(
+        val saved = PhotoArchive.save(
             context = applicationContext,
             jpeg = bytes,
             origin = PhotoArchive.Origin.Received,
@@ -95,6 +95,10 @@ class ConnectSyncWorker @AssistedInject constructor(
             senderName = partnerName,
         )
         syncState.lastMomentId = latest.id
+
+        // Delivered and written to disk, so the server has no further use for
+        // it. The widget renders from its own stored bitmap from here on.
+        if (saved.exists()) momentRepository.clearImage(latest.id)
     }
 
     /**

@@ -42,9 +42,9 @@ data class CropRect(
 
 object ImageEdits {
 
-    private const val QUALITY = 88
-    private const val MAX_BYTES = 700 * 1024
-    private const val MIN_QUALITY = 45
+    private const val QUALITY = 94
+    private const val MAX_BYTES = 900 * 1024
+    private const val MIN_QUALITY = 60
 
     /**
      * Applies the crop, then the strokes, then encodes.

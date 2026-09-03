@@ -51,6 +51,26 @@ object PhotoArchive {
         return target
     }
 
+    /**
+     * The archived copy of one photo, by the id it was sent under.
+     *
+     * This is what makes the server copy disposable. Once both phones hold the
+     * file, the only thing the document still needs to carry is the fact that
+     * the message happened — the bytes can go, and everything that used to read
+     * them reads this instead.
+     *
+     * Matched on the id suffix because the filename also carries a timestamp
+     * and an origin, neither of which the caller knows.
+     */
+    fun find(context: Context, id: String): File? {
+        if (id.isBlank()) return null
+        val suffix = "_$id.jpg"
+        return dir(context).listFiles()?.firstOrNull { it.name.endsWith(suffix) }
+    }
+
+    fun bytesFor(context: Context, id: String): ByteArray? =
+        find(context, id)?.let { runCatching { it.readBytes() }.getOrNull() }
+
     /** Newest first. */
     fun list(context: Context): List<Entry> =
         dir(context).listFiles()

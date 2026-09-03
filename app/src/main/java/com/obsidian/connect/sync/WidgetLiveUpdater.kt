@@ -2,6 +2,7 @@ package com.obsidian.connect.sync
 
 import android.content.Context
 import com.obsidian.connect.core.data.AuthRepository
+import com.obsidian.connect.core.data.MessageRepository
 import com.obsidian.connect.core.data.MomentRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.StrokeRepository
@@ -41,6 +42,7 @@ class WidgetLiveUpdater @Inject constructor(
     private val userRepository: UserRepository,
     private val pairingRepository: PairingRepository,
     private val momentRepository: MomentRepository,
+    private val messageRepository: MessageRepository,
     private val strokeRepository: StrokeRepository,
     private val syncState: SyncState,
 ) {
@@ -78,7 +80,7 @@ class WidgetLiveUpdater @Inject constructor(
                 if (moment == null || moment.id == syncState.lastMomentId) return@collect
 
                 val bytes = moment.bytes ?: return@collect
-                PhotoArchive.save(
+                val saved = PhotoArchive.save(
                     context = context,
                     jpeg = bytes,
                     origin = PhotoArchive.Origin.Received,
@@ -91,6 +93,50 @@ class WidgetLiveUpdater @Inject constructor(
                     senderName = partnerName,
                 )
                 syncState.lastMomentId = moment.id
+
+                // Same as the scheduled sync: once it is on disk and on the
+                // widget, the copy in Firestore is erased.
+                if (saved.exists()) momentRepository.clearImage(moment.id)
+            }
+    }
+
+    /**
+     * Drives the green dot on the watch face, live.
+     *
+     * This is what the dot was missing. Unread was only ever recomputed inside
+     * the fifteen-minute worker, so a message could sit unannounced for a
+     * quarter of an hour — and if you happened to open and read the chat before
+     * the next run, the dot never appeared at all. That is why it looked like
+     * it worked once and then stopped.
+     *
+     * The watermark is not advanced here. Showing the dot is not reading the
+     * message; only opening the chat does that.
+     */
+    suspend fun watchMessages() {
+        pairing()
+            .flatMapLatest { current ->
+                if (current == null) {
+                    flowOf(emptyList())
+                } else {
+                    messageRepository.observeRecent(current.first)
+                }
+            }
+            .collect { recent ->
+                val uid = authRepository.currentUid ?: return@collect
+
+                val newestFromPartner = recent
+                    .filter { it.senderId != uid }
+                    .maxOfOrNull { it.createdAtMillis }
+                    ?: return@collect
+
+                val unread = newestFromPartner > syncState.lastReadMessageAt
+
+                // A redraw costs a bitmap render and a Binder round trip to the
+                // launcher, so only when the answer actually changes.
+                if (unread == WidgetCaptionStore.hasUnread(context)) return@collect
+
+                WidgetCaptionStore.writeUnread(context, unread)
+                MomentWidgetUpdater.refresh(context)
             }
     }
 

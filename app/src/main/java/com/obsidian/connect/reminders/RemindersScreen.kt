@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAddCheck
@@ -29,11 +31,14 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -55,6 +60,12 @@ fun RemindersScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     var editing by remember { mutableStateOf<EditorTarget?>(null) }
+
+    // A working copy the drag rearranges, so an item follows the finger rather
+    // than waiting on a round trip to Firestore and back.
+    var arranged by remember(reminders) { mutableStateOf(reminders) }
+    var draggingId by remember { mutableStateOf<String?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(uiState.message) {
         uiState.message?.let { message ->
@@ -106,7 +117,7 @@ fun RemindersScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(items = reminders, key = { it.id }) { reminder ->
+                    itemsIndexed(items = arranged, key = { _, item -> item.id }) { index, reminder ->
                         ReminderRow(
                             reminder = reminder,
                             // Only worth offering on the shared list, and only
@@ -116,6 +127,40 @@ fun RemindersScreen(
                             onNudge = { viewModel.nudge(reminder) },
                             onDelete = { viewModel.delete(reminder) },
                             onClick = { editing = EditorTarget.Existing(reminder) },
+                            modifier = Modifier.zIndex(if (draggingId == reminder.id) 1f else 0f),
+                            dragHandle = {
+                                DragHandle(
+                                    onStart = {
+                                        draggingId = reminder.id
+                                        dragOffset = 0f
+                                    },
+                                    onDrag = { delta ->
+                                        dragOffset += delta
+
+                                        // One row's height of travel moves it
+                                        // one place. Measuring real row heights
+                                        // would be exact, but they vary with
+                                        // notes and dates, and a fixed step is
+                                        // steadier under the finger.
+                                        val step = (dragOffset / ROW_HEIGHT_PX).toInt()
+                                        if (step != 0) {
+                                            val target = (index + step)
+                                                .coerceIn(0, arranged.lastIndex)
+                                            if (target != index) {
+                                                arranged = arranged.toMutableList().apply {
+                                                    add(target, removeAt(index))
+                                                }
+                                                dragOffset -= step * ROW_HEIGHT_PX
+                                            }
+                                        }
+                                    },
+                                    onEnd = {
+                                        draggingId = null
+                                        dragOffset = 0f
+                                        viewModel.reorder(arranged.map { it.id })
+                                    },
+                                )
+                            },
                         )
                     }
                 }
@@ -129,8 +174,8 @@ fun RemindersScreen(
         EditorTarget.New -> ReminderEditorSheet(
             initial = null,
             onDismiss = { editing = null },
-            onSave = { title, note, dueAt ->
-                viewModel.add(title, note, dueAt)
+            onSave = { title, note, dueAt, hasTime, priority ->
+                viewModel.add(title, note, dueAt, hasTime, priority)
                 editing = null
             },
         )
@@ -138,8 +183,8 @@ fun RemindersScreen(
         is EditorTarget.Existing -> ReminderEditorSheet(
             initial = target.reminder,
             onDismiss = { editing = null },
-            onSave = { title, note, dueAt ->
-                viewModel.edit(target.reminder, title, note, dueAt)
+            onSave = { title, note, dueAt, hasTime, priority ->
+                viewModel.edit(target.reminder, title, note, dueAt, hasTime, priority)
                 editing = null
             },
         )
@@ -237,3 +282,38 @@ private fun ReminderScope.label(): String = when (this) {
     ReminderScope.Shared -> "Together"
     ReminderScope.Private -> "Just mine"
 }
+
+/**
+ * The three lines you press and hold to move a row.
+ *
+ * Long press rather than a plain drag, so scrolling the list past the handle
+ * does not pick a row up by accident.
+ */
+@Composable
+private fun DragHandle(
+    onStart: () -> Unit,
+    onDrag: (Float) -> Unit,
+    onEnd: () -> Unit,
+) {
+    Icon(
+        imageVector = Icons.Outlined.DragHandle,
+        contentDescription = "Hold and drag to move this",
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .padding(horizontal = 4.dp)
+            .pointerInput(Unit) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { onStart() },
+                    onDrag = { change, delta ->
+                        change.consume()
+                        onDrag(delta.y)
+                    },
+                    onDragEnd = onEnd,
+                    onDragCancel = onEnd,
+                )
+            },
+    )
+}
+
+/** Roughly one row, used to decide when a drag has crossed into the next slot. */
+private const val ROW_HEIGHT_PX = 190f

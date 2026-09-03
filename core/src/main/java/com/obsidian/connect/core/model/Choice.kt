@@ -16,6 +16,15 @@ data class Choice(
     @DocumentId val id: String = "",
     val addedBy: String = "",
     val image: Blob? = null,
+
+    /**
+     * Whether this card is a photo, whether or not the bytes are still here.
+     *
+     * The picture is erased from the document once the other phone has filed
+     * its own copy, so the card needs something more durable than [image] to
+     * say that a photo belongs on it.
+     */
+    val photo: Boolean = false,
     val note: String = "",
 
     /** 0 undecided, 1 liked, -1 disliked. */
@@ -31,6 +40,12 @@ data class Choice(
     @ServerTimestamp val createdAt: Date? = null,
 ) {
     val bytes: ByteArray? get() = image?.toBytes()
+
+    /** The bytes are still in the document. */
+    val hasImage: Boolean get() = image != null
+
+    /** Covers cards added before the flag existed, which still hold bytes. */
+    val isPhoto: Boolean get() = photo || image != null
 
     val isLiked: Boolean get() = verdict > 0
 

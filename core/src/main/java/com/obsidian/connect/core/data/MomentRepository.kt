@@ -81,6 +81,18 @@ class MomentRepository @Inject constructor(
         )
     }
 
+    /**
+     * Drops the photo out of a moment once the other phone has it.
+     *
+     * The empty document is kept on purpose. Both sync paths decide whether
+     * there is anything new by comparing the newest moment's id against the one
+     * already on the widget, so deleting it outright would promote the previous
+     * photo to newest and put an old picture back on the watch face.
+     */
+    suspend fun clearImage(momentId: String): Result<Unit> = runCatching {
+        moments.document(momentId).update("image", FieldValue.delete()).await()
+    }
+
     suspend fun delete(moment: Moment): Result<Unit> = runCatching {
         moments.document(moment.id).delete().await()
     }

@@ -36,14 +36,19 @@ object ImageCompressor {
      * The ceiling is still Firestore's 1MiB document, and the encoder below
      * steps down until it fits, so this is an upper bound rather than a promise.
      */
-    const val DETAIL_LONG_EDGE = 1600
+    const val DETAIL_LONG_EDGE = 2560
 
-    private const val QUALITY = 82
+    private const val QUALITY = 92
 
-    /** Matches the repository's ceiling, which Firestore's 1MiB doc limit sets. */
-    private const val MAX_BYTES = 700 * 1024
+    /**
+     * Matches the repository ceiling, which Firestore's 1MiB document limit
+     * sets. 900KB rather than 700: the rest of a message is a few hundred
+     * bytes, so the earlier figure was leaving a quarter of the budget unused
+     * and softening photos for no reason.
+     */
+    private const val MAX_BYTES = 900 * 1024
 
-    private const val MIN_QUALITY = 45
+    private const val MIN_QUALITY = 60
 
     /**
      * Compresses until the result actually fits.
