@@ -67,7 +67,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.obsidian.connect.core.model.Choice
-import com.obsidian.connect.editor.PhotoEditorScreen
+import com.obsidian.connect.editor.EditPhotoContract
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 
@@ -94,12 +94,14 @@ fun ChooseOverlay(
     var confirmingDelete by remember { mutableStateOf<Choice?>(null) }
     var side by remember { mutableStateOf(ChoiceSide.Mine) }
 
-    // Held between picking a photo and finishing with the editor.
-    var editing by remember { mutableStateOf<ByteArray?>(null) }
     val scope = rememberCoroutineScope()
 
+    val editor = rememberLauncherForActivityResult(
+        EditPhotoContract(context),
+    ) { edited -> edited?.let(viewModel::add) }
+
     fun openEditor(uri: Uri) {
-        scope.launch { editing = viewModel.prepare(uri) }
+        scope.launch { viewModel.prepare(uri)?.let(editor::launch) }
     }
 
     val picker = rememberLauncherForActivityResult(
@@ -196,17 +198,6 @@ fun ChooseOverlay(
                 modifier = Modifier.weight(1f),
             )
         }
-    }
-
-    editing?.let { bytes ->
-        PhotoEditorScreen(
-            jpeg = bytes,
-            onCancel = { editing = null },
-            onConfirm = { edited ->
-                viewModel.add(edited)
-                editing = null
-            },
-        )
     }
 
     confirmingDelete?.let { choice ->
@@ -440,15 +431,23 @@ private fun ChoiceCard(
             }
         }
 
-        // Outside the card, top right, as asked.
-        IconButton(
-            onClick = { onDelete(choice) },
-            modifier = Modifier.align(Alignment.TopEnd),
+        // Outside the card, top right, as asked. On its own dark disc because
+        // a white icon over the card's own light corner was all but invisible.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(4.dp)
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.55f))
+                .clickable { onDelete(choice) },
+            contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.Outlined.Delete,
                 contentDescription = "Delete this option",
                 tint = Color.White,
+                modifier = Modifier.size(20.dp),
             )
         }
     }

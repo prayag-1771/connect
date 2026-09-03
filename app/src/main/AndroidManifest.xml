@@ -71,6 +71,12 @@
         </activity>
 
         <activity
+            android:name=".editor.PhotoEditorActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Connect"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".archive.ArchiveActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity"

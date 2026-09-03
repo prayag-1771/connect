@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
@@ -53,8 +54,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke as DrawStroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.obsidian.connect.core.model.StrokePoint
 import com.obsidian.connect.draw.DrawPalette
 
@@ -71,38 +70,6 @@ private enum class EditorMode { Crop, Draw }
  */
 @Composable
 fun PhotoEditorScreen(
-    jpeg: ByteArray,
-    onCancel: () -> Unit,
-    onConfirm: (ByteArray) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    // A dialog rather than a layer inside the screen. Drawn in the host's
-    // content, the app's bottom navigation bar covered the crop and confirm
-    // controls entirely — and worse, remained tappable, so a stray press on
-    // another tab would throw the edit away mid-crop.
-    Dialog(
-        onDismissRequest = onCancel,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnClickOutside = false,
-            // Without this the dialog window sizes itself against the full
-            // display while its content is laid out against a smaller area,
-            // and the bottom row — the chips and the confirm button — falls
-            // off the end of the screen.
-            decorFitsSystemWindows = false,
-        ),
-    ) {
-        EditorContent(
-            jpeg = jpeg,
-            onCancel = onCancel,
-            onConfirm = onConfirm,
-            modifier = modifier,
-        )
-    }
-}
-
-@Composable
-private fun EditorContent(
     jpeg: ByteArray,
     onCancel: () -> Unit,
     onConfirm: (ByteArray) -> Unit,
@@ -176,17 +143,29 @@ private fun EditorContent(
                     )
                 }
 
-                when (mode) {
-                    EditorMode.Crop -> CropLayer(
-                        crop = crop,
-                        onCrop = { crop = it },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                // Both are always visible, whichever tool is active. Hiding
+                // the marks while cropping meant you could not see what you
+                // were cropping around, and hiding the crop while drawing
+                // meant marks could be placed in a region about to be cut
+                // away. Only the active one takes touches.
+                MarksLayer(
+                    strokes = strokes,
+                    current = if (mode == EditorMode.Draw) current else emptyList(),
+                    colour = colour,
+                    crop = crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
 
-                    EditorMode.Draw -> DrawLayer(
-                        strokes = strokes,
+                CropLayer(
+                    crop = crop,
+                    onCrop = { crop = it },
+                    interactive = mode == EditorMode.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                if (mode == EditorMode.Draw) {
+                    DrawLayer(
                         current = current,
-                        colour = colour,
                         // Drawn inside the crop, since that is the frame the
                         // marks are stored against.
                         crop = crop,
@@ -279,21 +258,29 @@ private fun EditorContent(
 private fun CropLayer(
     crop: CropRect,
     onCrop: (CropRect) -> Unit,
+    interactive: Boolean,
     modifier: Modifier = Modifier,
 ) {
     var dragging by remember { mutableStateOf(Corner.None) }
 
+    // pointerInput(Unit) never restarts, so anything captured in its lambda is
+    // frozen at the value it had when the gesture detector was created. Reading
+    // `crop` directly meant every drag recomputed from the *original*
+    // rectangle, which snapped it back and felt like the crop was resisting.
+    val liveCrop by rememberUpdatedState(crop)
+    val liveOnCrop by rememberUpdatedState(onCrop)
+
     Canvas(
-        modifier = modifier.pointerInput(Unit) {
+        modifier = if (!interactive) modifier else modifier.pointerInput(Unit) {
             detectDragGestures(
                 onDragStart = { start ->
-                    dragging = nearestCorner(start, crop, size.width, size.height)
+                    dragging = nearestCorner(start, liveCrop, size.width, size.height)
                 },
                 onDrag = { change, delta ->
                     change.consume()
                     val dx = delta.x / size.width
                     val dy = delta.y / size.height
-                    onCrop(crop.moved(dragging, dx, dy))
+                    liveOnCrop(liveCrop.moved(dragging, dx, dy))
                 },
                 onDragEnd = { dragging = Corner.None },
                 onDragCancel = { dragging = Corner.None },
@@ -321,12 +308,16 @@ private fun CropLayer(
             style = DrawStroke(width = 2.dp.toPx()),
         )
 
-        listOf(
-            rect.topLeft,
-            Offset(rect.right, rect.top),
-            Offset(rect.left, rect.bottom),
-            rect.bottomRight,
-        ).forEach { drawCircle(Color.White, radius = 8.dp.toPx(), center = it) }
+        // Handles only while cropping; during drawing the rectangle is just
+        // a boundary, and dots that cannot be dragged invite trying.
+        if (interactive) {
+            listOf(
+                rect.topLeft,
+                Offset(rect.right, rect.top),
+                Offset(rect.left, rect.bottom),
+                rect.bottomRight,
+            ).forEach { drawCircle(Color.White, radius = 10.dp.toPx(), center = it) }
+        }
     }
 }
 
@@ -389,24 +380,38 @@ private fun CropRect.moved(corner: Corner, dx: Float, dy: Float): CropRect {
 }
 
 @Composable
-private fun DrawLayer(
+private fun MarksLayer(
     strokes: List<EditStroke>,
-    current: androidx.compose.runtime.snapshots.SnapshotStateList<StrokePoint>,
+    current: List<StrokePoint>,
     colour: Long,
+    crop: CropRect,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier) {
+        strokes.forEach { drawMark(it.points, Color(it.color.toInt()), it.widthFraction, crop) }
+        drawMark(current, Color(colour.toInt()), PEN_WIDTH_FRACTION, crop)
+    }
+}
+
+@Composable
+private fun DrawLayer(
+    current: androidx.compose.runtime.snapshots.SnapshotStateList<StrokePoint>,
     crop: CropRect,
     onFinish: (List<StrokePoint>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val liveCrop by rememberUpdatedState(crop)
+
     Canvas(
-        modifier = modifier.pointerInput(crop) {
+        modifier = modifier.pointerInput(Unit) {
             detectDragGestures(
                 onDragStart = { offset ->
                     current.clear()
-                    current.add(offset.intoCrop(crop, size.width, size.height))
+                    current.add(offset.intoCrop(liveCrop, size.width, size.height))
                 },
                 onDrag = { change, _ ->
                     change.consume()
-                    current.add(change.position.intoCrop(crop, size.width, size.height))
+                    current.add(change.position.intoCrop(liveCrop, size.width, size.height))
                 },
                 onDragEnd = {
                     onFinish(current.toList())
@@ -418,10 +423,7 @@ private fun DrawLayer(
                 },
             )
         },
-    ) {
-        strokes.forEach { drawMark(it.points, Color(it.color.toInt()), it.widthFraction, crop) }
-        drawMark(current, Color(colour.toInt()), PEN_WIDTH_FRACTION, crop)
-    }
+    ) {}
 }
 
 /**

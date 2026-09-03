@@ -66,7 +66,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.obsidian.connect.choose.CaptureTarget
 import com.obsidian.connect.choose.ChooseOverlay
-import com.obsidian.connect.editor.PhotoEditorScreen
+import com.obsidian.connect.editor.EditPhotoContract
 import kotlinx.coroutines.launch
 import com.obsidian.connect.core.model.DeliveryStatus
 import com.obsidian.connect.core.model.Message
@@ -89,13 +89,17 @@ fun ChatScreen(
     var draft by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
-    // Held between choosing a photo and finishing with the editor.
-    var editing by remember { mutableStateOf<ByteArray?>(null) }
     var pickingSource by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    // The editor is its own activity, so a photo goes out to it and the
+    // edited bytes come back — nothing is held on this screen in between.
+    val editor = rememberLauncherForActivityResult(
+        EditPhotoContract(context),
+    ) { edited -> edited?.let(viewModel::sendPhoto) }
+
     fun openEditor(uri: Uri) {
-        scope.launch { editing = viewModel.prepare(uri) }
+        scope.launch { viewModel.prepare(uri)?.let(editor::launch) }
     }
 
     // The system photo picker needs no storage permission at all — it hands
@@ -397,17 +401,6 @@ fun ChatScreen(
                     picker.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                     )
-                },
-            )
-        }
-
-        editing?.let { bytes ->
-            PhotoEditorScreen(
-                jpeg = bytes,
-                onCancel = { editing = null },
-                onConfirm = { edited ->
-                    viewModel.sendPhoto(edited)
-                    editing = null
                 },
             )
         }
