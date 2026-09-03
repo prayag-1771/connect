@@ -3,6 +3,7 @@ package com.obsidian.connect.sync
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.obsidian.connect.widget.DailyResetReceiver
 import com.obsidian.connect.widget.ScheduleBoundaryReceiver
 
 /**
@@ -24,5 +25,6 @@ class BootReceiver : BroadcastReceiver() {
         // Alarms do not survive a reboot.
         ScheduleBoundaryReceiver.schedule(context)
         FastSyncReceiver.schedule(context)
+        DailyResetReceiver.schedule(context)
     }
 }

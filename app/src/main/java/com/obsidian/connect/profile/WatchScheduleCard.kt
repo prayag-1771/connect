@@ -1,6 +1,13 @@
 package com.obsidian.connect.profile
 
 import androidx.compose.foundation.layout.Arrangement
+import java.util.Calendar
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -42,9 +49,10 @@ fun WatchScheduleCard(modifier: Modifier = Modifier) {
     var start by remember { mutableIntStateOf(WidgetSchedule.startMinute(context)) }
     var end by remember { mutableIntStateOf(WidgetSchedule.endMinute(context)) }
     var picking by remember { mutableStateOf<Boundary?>(null) }
+    var days by remember { mutableStateOf(WidgetSchedule.days(context)) }
 
     fun persist() {
-        WidgetSchedule.save(context, enabled, start, end)
+        WidgetSchedule.save(context, enabled, start, end, days)
         // Redraw now, and move the next boundary alarm to match the new window.
         WatchWidgetProvider.refreshAll(context)
         ScheduleBoundaryReceiver.schedule(context)
@@ -88,9 +96,18 @@ fun WatchScheduleCard(modifier: Modifier = Modifier) {
                     ) { Text("Until ${WidgetSchedule.format(end)}") }
                 }
 
+                Spacer(Modifier.height(14.dp))
+                DayPicker(
+                    selected = days,
+                    onToggle = { day ->
+                        days = if (day in days) days - day else days + day
+                        persist()
+                    },
+                )
+
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = summaryFor(start, end),
+                    text = summaryFor(start, end) + daysSummary(days),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -157,4 +174,73 @@ private fun TimeDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
         text = { TimePicker(state = state) },
     )
+}
+
+/**
+ * The seven days, as circles you tap.
+ *
+ * Sunday last rather than first. Calendar counts from Sunday, but a week read
+ * by a person starts on Monday, and the letters would otherwise not line up
+ * with how anyone thinks about their week.
+ */
+@Composable
+private fun DayPicker(selected: Set<Int>, onToggle: (Int) -> Unit) {
+    val order = listOf(
+        Calendar.MONDAY to "M",
+        Calendar.TUESDAY to "T",
+        Calendar.WEDNESDAY to "W",
+        Calendar.THURSDAY to "T",
+        Calendar.FRIDAY to "F",
+        Calendar.SATURDAY to "S",
+        Calendar.SUNDAY to "S",
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        order.forEach { (day, letter) ->
+            val on = day in selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .aspectRatio(1f)
+                    .clip(CircleShape)
+                    .background(
+                        if (on) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHighest
+                        },
+                    )
+                    .clickable { onToggle(day) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = letter,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (on) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** Named so a glance at the card says which days, not just which hours. */
+private fun daysSummary(days: Set<Int>): String = when {
+    days.isEmpty() -> ", but no days are selected, so it never shows."
+    days.size == 7 -> ", every day."
+    days == setOf(
+        Calendar.MONDAY,
+        Calendar.TUESDAY,
+        Calendar.WEDNESDAY,
+        Calendar.THURSDAY,
+        Calendar.FRIDAY,
+    ) -> ", Monday to Friday."
+    days == setOf(Calendar.SATURDAY, Calendar.SUNDAY) -> ", at weekends."
+    else -> ", on the days marked."
 }

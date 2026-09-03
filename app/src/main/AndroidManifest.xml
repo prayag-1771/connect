@@ -58,6 +58,16 @@
       "sharing your screen" notification mandatory rather than optional.
     -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      Used only to compare against places saved on this phone. Coordinates are
+      never written to Firestore and never sent to the other person.
+      Background access is what lets the check run while the widget is the only
+      thing on screen, which is the whole point of it.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
@@ -162,6 +172,10 @@
             android:name=".widget.ScheduleBoundaryReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".widget.DailyResetReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".call.CallActivity"
             android:exported="false"
@@ -174,6 +188,11 @@
             android:name=".call.ScreenShareService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
+
+        <activity
+            android:name=".profile.SettingsActivity"
+            android:exported="false"
+            android:label="Settings" />
 
         <activity
             android:name=".starred.StarredActivity"

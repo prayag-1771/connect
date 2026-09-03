@@ -2,6 +2,8 @@ package com.obsidian.connect.profile
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.outlined.Settings
 import com.obsidian.connect.starred.StarredActivity
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Star
@@ -71,7 +73,22 @@ fun ProfileScreen(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("You", style = MaterialTheme.typography.headlineSmall)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "You",
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = { SettingsActivity.open(context) }) {
+                Icon(
+                    imageVector = Icons.Outlined.Settings,
+                    contentDescription = "Settings",
+                )
+            }
+        }
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -96,23 +113,11 @@ fun ProfileScreen(
             Text("  Photos kept on this phone")
         }
 
-        AppLockCard()
-
-        val chatTheme by viewModel.chatTheme.collectAsStateWithLifecycle()
-        val paired by viewModel.paired.collectAsStateWithLifecycle()
-        val profileContext = LocalContext.current
-
-        AppearanceCard(
-            chatTheme = chatTheme,
-            onChatTheme = viewModel::setChatTheme,
-            canChangeChat = paired,
-        )
-
         Card(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { StarredActivity.open(profileContext) }
+                    .clickable { StarredActivity.open(context) }
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -137,12 +142,6 @@ fun ProfileScreen(
                 )
             }
         }
-
-        WatchScheduleCard()
-
-        WidgetDisableCard()
-
-        DrawingIndicatorCard()
 
         state.error?.let { message ->
             Text(
@@ -234,7 +233,7 @@ fun ProfileScreen(
  * so there is nothing to request in-app beyond sending the user there.
  */
 @Composable
-private fun DrawingIndicatorCard() {
+fun DrawingIndicatorCard() {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(DrawingBubble.canShow(context)) }
 
@@ -277,7 +276,7 @@ private fun DrawingIndicatorCard() {
  * never works is worse than no switch.
  */
 @Composable
-private fun AppLockCard() {
+fun AppLockCard() {
     val context = LocalContext.current
     if (!AppLock.isAvailable(context)) return
 

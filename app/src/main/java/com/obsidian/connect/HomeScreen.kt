@@ -21,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.obsidian.connect.chat.ChatFocus
+import com.obsidian.connect.profile.DailyArmPrompt
 import com.obsidian.connect.chat.ChatScreen
 import com.obsidian.connect.draw.DrawScreen
 import com.obsidian.connect.profile.ProfileScreen
@@ -65,6 +66,9 @@ fun HomeScreen(
     LaunchedEffect(ChatFocus.pendingMessageId) {
         if (ChatFocus.pendingMessageId != null) selected = tabs.indexOf(HomeTab.Chat)
     }
+
+    // The morning question, if it is switched on and today is unanswered.
+    DailyArmPrompt()
 
     Scaffold(
         modifier = modifier,

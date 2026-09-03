@@ -13,6 +13,7 @@ import com.obsidian.connect.sync.FastSyncReceiver
 import com.obsidian.connect.ui.theme.AppearanceStore
 import com.obsidian.connect.sync.SyncScheduler
 import com.obsidian.connect.sync.WidgetLiveUpdater
+import com.obsidian.connect.widget.DailyResetReceiver
 import com.obsidian.connect.widget.DrawingBubble
 import com.obsidian.connect.widget.ScheduleBoundaryReceiver
 import com.obsidian.connect.widget.WidgetCaptionStore
@@ -81,6 +82,9 @@ class ConnectApplication : Application(), Configuration.Provider, ImageLoaderFac
 
         // Flips the watch face over when the active window opens or closes.
         ScheduleBoundaryReceiver.schedule(this)
+
+        // Turns the face off each morning, when that is switched on.
+        DailyResetReceiver.schedule(this)
 
         // Runs a sync every couple of minutes even with the app closed, which
         // the fifteen-minute worker on its own cannot.
