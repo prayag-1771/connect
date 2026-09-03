@@ -67,27 +67,40 @@ class ChatViewModel @Inject constructor(
      * rejected outright. A copy is archived here so it survives even though
      * only the last 200 messages are read back.
      */
-    fun sendPhoto(uri: Uri) {
+    /**
+     * Loads and downscales a picked photo, ready for the editor.
+     *
+     * Stops short of sending: the editor needs the bytes to crop and draw on,
+     * and going straight to Firestore would upload a photo nobody had
+     * finished with.
+     */
+    suspend fun prepare(uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            context.contentResolver.openInputStream(uri).use { it?.readBytes() }
+                ?.let {
+                    ImageCompressor.compress(
+                        source = it,
+                        longEdge = ImageCompressor.DETAIL_LONG_EDGE,
+                    )
+                }
+        }.getOrNull()
+    }
+
+    /**
+     * Sends a photo that has already been through the editor.
+     *
+     * A copy is archived here so it survives even though only the last 200
+     * messages are read back.
+     */
+    fun sendPhoto(jpeg: ByteArray) {
         val id = pairingId.value ?: return
         val uid = authRepository.currentUid ?: return
 
         viewModelScope.launch {
-            val compressed = withContext(Dispatchers.IO) {
-                runCatching {
-                    context.contentResolver.openInputStream(uri).use { it?.readBytes() }
-                        ?.let {
-                            ImageCompressor.compress(
-                                source = it,
-                                longEdge = ImageCompressor.DETAIL_LONG_EDGE,
-                            )
-                        }
-                }.getOrNull()
-            } ?: return@launch
-
-            messageRepository.sendPhoto(id, uid, compressed).onSuccess { messageId ->
+            messageRepository.sendPhoto(id, uid, jpeg).onSuccess { messageId ->
                 PhotoArchive.save(
                     context = context,
-                    jpeg = compressed,
+                    jpeg = jpeg,
                     origin = PhotoArchive.Origin.Sent,
                     id = messageId,
                 )

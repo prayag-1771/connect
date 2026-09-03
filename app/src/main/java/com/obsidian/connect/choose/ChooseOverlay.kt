@@ -1,6 +1,9 @@
 package com.obsidian.connect.choose
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -28,7 +31,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
@@ -46,6 +50,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,11 +60,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.obsidian.connect.core.model.Choice
+import com.obsidian.connect.editor.PhotoEditorScreen
+import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 
 /**
@@ -80,12 +89,63 @@ fun ChooseOverlay(
     val choices by viewModel.choices.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val myUid = viewModel.myUid
+    val context = LocalContext.current
 
     var confirmingDelete by remember { mutableStateOf<Choice?>(null) }
+    var side by remember { mutableStateOf(ChoiceSide.Mine) }
+
+    // Held between picking a photo and finishing with the editor.
+    var editing by remember { mutableStateOf<ByteArray?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun openEditor(uri: Uri) {
+        scope.launch { editing = viewModel.prepare(uri) }
+    }
 
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
-    ) { uri -> uri?.let(viewModel::add) }
+    ) { uri -> uri?.let(::openEditor) }
+
+    // The camera writes into a file we hand it, so the URI has to survive
+    // until the result comes back.
+    var pendingCapture by remember { mutableStateOf<Uri?>(null) }
+    val camera = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture(),
+    ) { saved ->
+        if (saved) pendingCapture?.let(::openEditor)
+        pendingCapture = null
+        CaptureTarget.clearStale(context)
+    }
+
+    val cameraPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted) return@rememberLauncherForActivityResult
+        val (_, uri) = CaptureTarget.create(context)
+        pendingCapture = uri
+        camera.launch(uri)
+    }
+
+    fun takePhoto() {
+        val allowed = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CAMERA,
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (allowed) {
+            val (_, uri) = CaptureTarget.create(context)
+            pendingCapture = uri
+            camera.launch(uri)
+        } else {
+            cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    // Split by who put it up. Your own deck is a list of questions waiting on
+    // an answer; theirs is a list of answers waiting on you. Reading both in
+    // one stack made it unclear which cards you were meant to act on.
+    val mine = remember(choices, myUid) { choices.filter { it.addedBy == myUid } }
+    val theirs = remember(choices, myUid) { choices.filter { it.addedBy != myUid } }
 
     Box(
         modifier = modifier
@@ -111,20 +171,42 @@ fun ChooseOverlay(
         ) {
             Header(onClose = onDismiss)
 
+            SideTabs(
+                side = side,
+                onSide = { side = it },
+                mineCount = mine.size,
+                theirsCount = theirs.size,
+            )
+
             Deck(
-                choices = choices,
+                choices = if (side == ChoiceSide.Mine) mine else theirs,
                 myUid = myUid,
                 busy = busy,
+                // Only your own deck takes new cards. Adding an option to
+                // theirs would be answering a question they had not asked.
+                allowAdding = side == ChoiceSide.Mine,
                 onJudge = viewModel::judge,
                 onDelete = { confirmingDelete = it },
-                onAdd = {
+                onPickFromGallery = {
                     picker.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                     )
                 },
+                onTakePhoto = ::takePhoto,
                 modifier = Modifier.weight(1f),
             )
         }
+    }
+
+    editing?.let { bytes ->
+        PhotoEditorScreen(
+            jpeg = bytes,
+            onCancel = { editing = null },
+            onConfirm = { edited ->
+                viewModel.add(edited)
+                editing = null
+            },
+        )
     }
 
     confirmingDelete?.let { choice ->
@@ -167,20 +249,80 @@ private fun Header(onClose: () -> Unit) {
     }
 }
 
+/** Which deck is on show: the ones you put up, or the ones they did. */
+enum class ChoiceSide { Mine, Theirs }
+
+@Composable
+private fun SideTabs(
+    side: ChoiceSide,
+    onSide: (ChoiceSide) -> Unit,
+    mineCount: Int,
+    theirsCount: Int,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        SideTab(
+            // Labelled by what the deck is for rather than by whose it is.
+            // "Mine" and "Theirs" both need a moment's thought about which
+            // way round they run.
+            label = "Asking them",
+            count = mineCount,
+            selected = side == ChoiceSide.Mine,
+            onClick = { onSide(ChoiceSide.Mine) },
+            modifier = Modifier.weight(1f),
+        )
+        SideTab(
+            label = "They asked",
+            count = theirsCount,
+            selected = side == ChoiceSide.Theirs,
+            onClick = { onSide(ChoiceSide.Theirs) },
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun SideTab(
+    label: String,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        color = if (selected) Color.White.copy(alpha = 0.22f) else Color.Transparent,
+    ) {
+        Text(
+            text = if (count > 0) "$label  ·  $count" else label,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) Color.White else Color.White.copy(alpha = 0.6f),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        )
+    }
+}
+
 @Composable
 private fun Deck(
     choices: List<Choice>,
     myUid: String?,
     busy: Boolean,
+    allowAdding: Boolean,
     onJudge: (Choice, Int) -> Unit,
     onDelete: (Choice) -> Unit,
-    onAdd: () -> Unit,
+    onPickFromGallery: () -> Unit,
+    onTakePhoto: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // One page past the end, always. Swiping to the right-most card is how you
-    // add another, so the deck is never empty and there is no separate button
-    // to go hunting for.
-    val pagerState = rememberPagerState(pageCount = { choices.size + 1 })
+    // One page past the end on your own deck. Swiping to the right-most card
+    // is how another option goes in, so there is no separate button to hunt
+    // for. Their deck takes no additions, so it has no trailing card.
+    val addPage = if (allowAdding) 1 else 0
+    val pagerState = rememberPagerState(pageCount = { choices.size + addPage })
 
     Column(modifier = modifier) {
         HorizontalPager(
@@ -199,11 +341,12 @@ private fun Deck(
                 label = "cardScale",
             )
 
-            if (page == choices.size) {
+            if (allowAdding && page == choices.size) {
                 AddCard(
                     busy = busy,
                     firstOne = choices.isEmpty(),
-                    onAdd = onAdd,
+                    onPickFromGallery = onPickFromGallery,
+                    onTakePhoto = onTakePhoto,
                     modifier = Modifier.scale(scale),
                 )
             } else {
@@ -217,11 +360,21 @@ private fun Deck(
             }
         }
 
+        if (choices.isEmpty() && !allowAdding) {
+            Text(
+                text = "They have not asked you anything yet",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.75f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+            )
+        }
+
         Text(
-            text = if (pagerState.currentPage == choices.size) {
-                "Add another"
-            } else {
-                "${pagerState.currentPage + 1} of ${choices.size}"
+            text = when {
+                allowAdding && pagerState.currentPage == choices.size -> "Add another"
+                choices.isEmpty() -> ""
+                else -> "${pagerState.currentPage + 1} of ${choices.size}"
             },
             style = MaterialTheme.typography.labelMedium,
             color = Color.White.copy(alpha = 0.7f),
@@ -361,15 +514,13 @@ private fun Verdict(
 private fun AddCard(
     busy: Boolean,
     firstOne: Boolean,
-    onAdd: () -> Unit,
+    onPickFromGallery: () -> Unit,
+    onTakePhoto: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize().padding(vertical = 12.dp)) {
         Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 20.dp)
-                .clickable(onClick = onAdd),
+            modifier = Modifier.fillMaxSize().padding(top = 20.dp),
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
         ) {
@@ -380,47 +531,77 @@ private fun AddCard(
             ) {
                 if (busy) {
                     CircularProgressIndicator()
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Add,
-                            contentDescription = "Add an option",
-                            modifier = Modifier.size(36.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    return@Column
+                }
 
-                    Spacer(Modifier.height(16.dp))
+                Text(
+                    text = if (firstOne) {
+                        "Add something to choose between"
+                    } else {
+                        "Add another"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    textAlign = TextAlign.Center,
+                )
 
+                if (firstOne) {
+                    Spacer(Modifier.height(6.dp))
                     Text(
-                        text = if (firstOne) {
-                            "Add something to choose between"
-                        } else {
-                            "Add another"
-                        },
-                        style = MaterialTheme.typography.titleSmall,
+                        text = "They swipe through and tell you which one.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )
+                }
 
-                    if (firstOne) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = "Photos of what you are deciding between. They swipe " +
-                                "through and tell you which one.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
+                Spacer(Modifier.height(24.dp))
+
+                // Two routes, side by side rather than behind a menu. Half of
+                // what gets compared is already on the phone and half is in
+                // front of you in a shop, and neither is the odd one out.
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    AddOption(
+                        icon = Icons.Outlined.PhotoCamera,
+                        label = "Take one",
+                        onClick = onTakePhoto,
+                    )
+                    AddOption(
+                        icon = Icons.Outlined.PhotoLibrary,
+                        label = "From gallery",
+                        onClick = onPickFromGallery,
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AddOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick).padding(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(text = label, style = MaterialTheme.typography.labelMedium)
     }
 }
 

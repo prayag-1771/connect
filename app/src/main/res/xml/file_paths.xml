@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The camera app writes into our cache directory and needs a content URI to do
+  it. Only this one folder is exposed, so nothing else the app holds — the
+  photo archive, saved images — is reachable through the provider.
+-->
+<paths>
+    <cache-path name="captures" path="captures/" />
+</paths>

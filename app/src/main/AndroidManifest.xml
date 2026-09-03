@@ -139,6 +139,20 @@
             </intent-filter>
         </receiver>
         <!--
+          Hands the camera app a writable URI for one file in our cache. Not
+          exported: the grant is passed per-intent and expires with it.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!--
           WorkManager's own initializer is removed so ConnectApplication can
           supply a Configuration carrying the Hilt worker factory. Leaving both
           in place means whichever runs first wins, which is not a coin flip

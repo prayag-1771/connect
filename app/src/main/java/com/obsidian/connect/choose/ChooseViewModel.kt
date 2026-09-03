@@ -53,27 +53,34 @@ class ChooseViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), emptyList())
 
-    fun add(uri: Uri) {
+    /**
+     * Loads and downscales a picked photo, ready for the editor.
+     *
+     * Stops short of sending: the editor needs the bytes to crop and draw on,
+     * and pushing them straight to Firestore would mean uploading a photo
+     * nobody had finished with.
+     */
+    suspend fun prepare(uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            context.contentResolver.openInputStream(uri).use { it?.readBytes() }
+                ?.let {
+                    // Judged on screen, never rendered by a widget, so the 720
+                    // widget cap would only throw away detail.
+                    ImageCompressor.compress(
+                        source = it,
+                        longEdge = ImageCompressor.DETAIL_LONG_EDGE,
+                    )
+                }
+        }.getOrNull()
+    }
+
+    fun add(jpeg: ByteArray) {
         val id = pairingId.value ?: return
         val uid = authRepository.currentUid ?: return
 
         viewModelScope.launch {
             _busy.value = true
-            val compressed = withContext(Dispatchers.IO) {
-                runCatching {
-                    context.contentResolver.openInputStream(uri).use { it?.readBytes() }
-                        ?.let {
-                            // Judged on screen, never rendered by a widget, so
-                            // the 720 widget cap would only throw away detail.
-                            ImageCompressor.compress(
-                                source = it,
-                                longEdge = ImageCompressor.DETAIL_LONG_EDGE,
-                            )
-                        }
-                }.getOrNull()
-            }
-
-            if (compressed != null) choiceRepository.add(id, uid, compressed)
+            choiceRepository.add(id, uid, jpeg)
             _busy.value = false
         }
     }

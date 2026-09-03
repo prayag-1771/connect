@@ -3,6 +3,7 @@ package com.obsidian.connect.chat
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,6 +49,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,7 +64,10 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.obsidian.connect.choose.CaptureTarget
 import com.obsidian.connect.choose.ChooseOverlay
+import com.obsidian.connect.editor.PhotoEditorScreen
+import kotlinx.coroutines.launch
 import com.obsidian.connect.core.model.DeliveryStatus
 import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.deliveryStatusOf
@@ -84,11 +89,53 @@ fun ChatScreen(
     var draft by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
+    // Held between choosing a photo and finishing with the editor.
+    var editing by remember { mutableStateOf<ByteArray?>(null) }
+    var pickingSource by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun openEditor(uri: Uri) {
+        scope.launch { editing = viewModel.prepare(uri) }
+    }
+
     // The system photo picker needs no storage permission at all — it hands
     // back a single grant for exactly what was chosen.
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
-    ) { uri -> uri?.let(viewModel::sendPhoto) }
+    ) { uri -> uri?.let(::openEditor) }
+
+    var pendingCapture by remember { mutableStateOf<Uri?>(null) }
+    val camera = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture(),
+    ) { saved ->
+        if (saved) pendingCapture?.let(::openEditor)
+        pendingCapture = null
+        CaptureTarget.clearStale(context)
+    }
+
+    val cameraPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted) return@rememberLauncherForActivityResult
+        val (_, uri) = CaptureTarget.create(context)
+        pendingCapture = uri
+        camera.launch(uri)
+    }
+
+    fun takePhoto() {
+        val allowed = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CAMERA,
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (allowed) {
+            val (_, uri) = CaptureTarget.create(context)
+            pendingCapture = uri
+            camera.launch(uri)
+        } else {
+            cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     val micPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -257,11 +304,7 @@ fun ChatScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             IconButton(
-                onClick = {
-                    picker.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                    )
-                },
+                onClick = { pickingSource = true },
                 enabled = !recording,
             ) {
                 Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = "Send a photo")
@@ -341,6 +384,33 @@ fun ChatScreen(
             }
         }
     }
+
+        if (pickingSource) {
+            PhotoSourceSheet(
+                onDismiss = { pickingSource = false },
+                onCamera = {
+                    pickingSource = false
+                    takePhoto()
+                },
+                onGallery = {
+                    pickingSource = false
+                    picker.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    )
+                },
+            )
+        }
+
+        editing?.let { bytes ->
+            PhotoEditorScreen(
+                jpeg = bytes,
+                onCancel = { editing = null },
+                onConfirm = { edited ->
+                    viewModel.sendPhoto(edited)
+                    editing = null
+                },
+            )
+        }
 
         if (chooseOpen) {
             ChooseOverlay(
