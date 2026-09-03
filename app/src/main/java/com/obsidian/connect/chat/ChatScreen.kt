@@ -31,7 +31,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
-import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.GifBox
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -245,8 +245,11 @@ fun ChatScreen(
                 onClick = { panelOpen = !panelOpen },
                 enabled = !recording,
             ) {
+                // A GIF box, not a smiley. The keyboard already puts an
+                // emoji button a couple of centimetres away, and two smiling
+                // faces side by side inviting different things is a trap.
                 Icon(
-                    imageVector = Icons.Outlined.EmojiEmotions,
+                    imageVector = Icons.Outlined.GifBox,
                     contentDescription = if (panelOpen) "Close" else "GIFs and saved images",
                     tint = if (panelOpen) {
                         MaterialTheme.colorScheme.primary
