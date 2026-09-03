@@ -14,21 +14,26 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -70,10 +75,13 @@ class ArchiveActivity : FragmentActivity() {
 private fun ArchiveScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
-    // Read once. The archive only changes while photos are arriving, and
-    // re-listing a directory on every recomposition would be wasteful.
-    val entries = remember { PhotoArchive.list(context) }
+    // Re-listed whenever something is removed, rather than observed. The
+    // archive only changes when a photo arrives or is deleted here.
+    var reload by remember { mutableIntStateOf(0) }
+    val entries = remember(reload) { PhotoArchive.list(context) }
+
     var viewing by remember { mutableStateOf<PhotoArchive.Entry?>(null) }
+    var confirmingDelete by remember { mutableStateOf<PhotoArchive.Entry?>(null) }
 
     Scaffold(
         topBar = {
@@ -117,7 +125,39 @@ private fun ArchiveScreen(onBack: () -> Unit) {
     }
 
     viewing?.let { entry ->
-        FullPhoto(entry = entry, onDismiss = { viewing = null })
+        FullPhoto(
+            entry = entry,
+            onDismiss = { viewing = null },
+            onDelete = { confirmingDelete = entry },
+        )
+    }
+
+    confirmingDelete?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = null },
+            title = { Text("Delete this photo?") },
+            // Worth asking: this is the only copy. It was never in the gallery,
+            // and the other person's copy lives on their phone, not here.
+            text = {
+                Text(
+                    "This is the only copy on this phone. It is not in your " +
+                        "gallery, so it cannot be recovered.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        PhotoArchive.delete(entry)
+                        confirmingDelete = null
+                        viewing = null
+                        reload++
+                    },
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDelete = null }) { Text("Keep it") }
+            },
+        )
     }
 }
 
@@ -152,7 +192,11 @@ private fun Thumbnail(entry: PhotoArchive.Entry, onClick: () -> Unit) {
 }
 
 @Composable
-private fun FullPhoto(entry: PhotoArchive.Entry, onDismiss: () -> Unit) {
+private fun FullPhoto(
+    entry: PhotoArchive.Entry,
+    onDismiss: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val bitmap = remember(entry.file.path) {
         BitmapFactory.decodeFile(entry.file.path)?.asImageBitmap()
     }
@@ -171,6 +215,22 @@ private fun FullPhoto(entry: PhotoArchive.Entry, onDismiss: () -> Unit) {
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        // Sits over the photo rather than in a menu: deleting is the only
+        // thing there is to do here besides closing.
+        IconButton(
+            onClick = onDelete,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(8.dp),
+        ) {
+            Icon(
+                Icons.Outlined.Delete,
+                contentDescription = "Delete this photo",
+                tint = Color.White,
+            )
+        }
     }
 }
 

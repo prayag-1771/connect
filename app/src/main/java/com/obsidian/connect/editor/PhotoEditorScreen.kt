@@ -54,6 +54,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke as DrawStroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.obsidian.connect.core.model.StrokePoint
 import com.obsidian.connect.draw.DrawPalette
 
@@ -70,6 +72,33 @@ private enum class EditorMode { Crop, Draw }
  */
 @Composable
 fun PhotoEditorScreen(
+    jpeg: ByteArray,
+    onCancel: () -> Unit,
+    onConfirm: (ByteArray) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // A dialog rather than a layer inside the screen. Drawn in the host's
+    // content, the app's bottom navigation bar covered the crop and confirm
+    // controls entirely — and worse, remained tappable, so a stray press on
+    // another tab would throw the edit away mid-crop.
+    Dialog(
+        onDismissRequest = onCancel,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnClickOutside = false,
+        ),
+    ) {
+        EditorContent(
+            jpeg = jpeg,
+            onCancel = onCancel,
+            onConfirm = onConfirm,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun EditorContent(
     jpeg: ByteArray,
     onCancel: () -> Unit,
     onConfirm: (ByteArray) -> Unit,
@@ -182,6 +211,17 @@ fun PhotoEditorScreen(
             }
             Spacer(Modifier.height(12.dp))
         }
+
+        Text(
+            text = if (mode == EditorMode.Crop) {
+                "Drag the corners to crop, or the middle to move it"
+            } else {
+                "Draw on the photo"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White.copy(alpha = 0.7f),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        )
 
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
