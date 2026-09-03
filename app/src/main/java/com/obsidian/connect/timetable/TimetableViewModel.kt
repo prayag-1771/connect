@@ -10,6 +10,7 @@ import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.TimetableRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.core.model.Timetable
+import com.obsidian.connect.core.model.TimetableEntry
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -58,9 +60,19 @@ class TimetableViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
 
-    val theirs: StateFlow<Timetable?> = partnerId
-        .flatMapLatest { partner ->
-            val id = pairingId.value
+    /**
+     * Their week.
+     *
+     * Both ids are combined rather than one being read imperatively out of the
+     * other. It happened to work, because the partner is derived from the
+     * pairing and so always arrives second - but a flow that is correct only
+     * because of the order two other flows happen to emit in is one bad day
+     * from showing an empty timetable and no reason why.
+     */
+    val theirs: StateFlow<Timetable?> = combine(pairingId, partnerId) { id, partner ->
+        id to partner
+    }
+        .flatMapLatest { (id, partner) ->
             if (id == null || partner == null) {
                 flowOf(null)
             } else {
@@ -127,6 +139,42 @@ class TimetableViewModel @Inject constructor(
 
             _busy.value = false
         }
+    }
+
+    /**
+     * Adds or replaces one slot.
+     *
+     * The whole list is written back rather than the one row, because the
+     * entries live inside a single document - there is no smaller thing to
+     * update. Matched on id, so a slot that shares a day and a time with
+     * another is still edited individually.
+     */
+    fun save(entry: TimetableEntry) {
+        val id = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+
+        val existing = mine.value?.entries.orEmpty()
+        val withId = if (entry.id.isBlank()) {
+            entry.copy(id = java.util.UUID.randomUUID().toString())
+        } else {
+            entry
+        }
+
+        val updated = if (existing.any { it.id == withId.id }) {
+            existing.map { if (it.id == withId.id) withId else it }
+        } else {
+            existing + withId
+        }
+
+        viewModelScope.launch { timetableRepository.save(id, uid, updated) }
+    }
+
+    fun remove(entry: TimetableEntry) {
+        val id = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+
+        val remaining = mine.value?.entries.orEmpty().filterNot { it.id == entry.id }
+        viewModelScope.launch { timetableRepository.save(id, uid, remaining) }
     }
 
     fun clearMine() {

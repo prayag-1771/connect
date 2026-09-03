@@ -41,6 +41,7 @@ class TimetableRepository @Inject constructor(
             mapOf(
                 "entries" to entries.map { entry ->
                     mapOf(
+                        "id" to entry.id.ifBlank { java.util.UUID.randomUUID().toString() },
                         "day" to entry.day,
                         "start" to entry.start,
                         "end" to entry.end,

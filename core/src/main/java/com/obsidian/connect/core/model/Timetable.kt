@@ -12,6 +12,15 @@ import com.google.firebase.firestore.DocumentId
  * extraction is told to produce.
  */
 data class TimetableEntry(
+    /**
+     * Identity, so editing one slot does not have to guess which it was.
+     *
+     * Two lectures can share a day, a time and a name across different weeks,
+     * so matching on content would sometimes edit the wrong one. Generated when
+     * a slot is created, whether by hand or by reading an image.
+     */
+    val id: String = "",
+
     /** Full English day name, so it can be matched without a lookup table. */
     val day: String = "",
     val start: String = "",

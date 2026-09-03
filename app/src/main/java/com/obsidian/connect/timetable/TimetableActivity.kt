@@ -10,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +36,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -100,6 +104,14 @@ private fun TimetableScreen(
     // Opens on the day it actually is, which is the day anyone came here for.
     var day by remember { mutableStateOf(todayName()) }
 
+    // Whose week is on screen. Yours first, because the common reason to open
+    // this is to check your own and the second reason is to compare.
+    var showingMine by remember { mutableStateOf(true) }
+
+    // The slot being edited. A blank one with no id means a new slot; null
+    // means the editor is closed.
+    var editing by remember { mutableStateOf<TimetableEntry?>(null) }
+
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri -> uri?.let(viewModel::readFrom) }
@@ -117,8 +129,8 @@ private fun TimetableScreen(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f),
             )
-            if (mine?.isEmpty == false) {
-                OutlinedButton(onClick = viewModel::clearMine) { Text("Clear mine") }
+            if (showingMine && mine?.isEmpty == false) {
+                OutlinedButton(onClick = viewModel::clearMine) { Text("Clear") }
             }
         }
 
@@ -142,13 +154,36 @@ private fun TimetableScreen(
                 }
             }
 
-            val yours = mine?.entriesOn(day).orEmpty()
-            val hers = theirs?.entriesOn(day).orEmpty()
+            item {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        selected = showingMine,
+                        onClick = { showingMine = true },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    ) { Text("You") }
 
-            if (yours.isEmpty() && hers.isEmpty()) {
+                    SegmentedButton(
+                        selected = !showingMine,
+                        onClick = { showingMine = false },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    ) { Text(partnerName) }
+                }
+            }
+
+            val shown = if (showingMine) mine else theirs
+            val slots = shown?.entriesOn(day).orEmpty()
+
+            if (slots.isEmpty()) {
                 item {
                     Text(
-                        text = "Nothing on $day.",
+                        text = when {
+                            shown == null || shown.isEmpty -> if (showingMine) {
+                                "You have not added a timetable yet."
+                            } else {
+                                "$partnerName has not added one yet."
+                            }
+                            else -> "Nothing on $day."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 24.dp),
@@ -156,14 +191,19 @@ private fun TimetableScreen(
                 }
             }
 
-            if (yours.isNotEmpty()) {
-                item { Heading("You") }
-                items(yours) { Slot(entry = it, mine = true) }
-            }
-
-            if (hers.isNotEmpty()) {
-                item { Heading(partnerName) }
-                items(hers) { Slot(entry = it, mine = false) }
+            items(slots) { entry ->
+                Slot(
+                    entry = entry,
+                    mine = showingMine,
+                    // Only your own week is yours to change. The rules refuse
+                    // it either way, so this is about not offering something
+                    // that would fail.
+                    onClick = if (showingMine) {
+                        { editing = entry }
+                    } else {
+                        null
+                    },
+                )
             }
 
             item { Spacer(Modifier.height(12.dp)) }
@@ -179,6 +219,13 @@ private fun TimetableScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
+            }
+
+            if (showingMine) {
+                OutlinedButton(
+                    onClick = { editing = TimetableEntry(day = day) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Add a slot by hand") }
             }
 
             Button(
@@ -214,29 +261,43 @@ private fun TimetableScreen(
             )
         }
     }
-}
 
-@Composable
-private fun Heading(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 8.dp),
-    )
+    editing?.let { entry ->
+        SlotEditor(
+            initial = entry,
+            defaultDay = day,
+            onSave = {
+                viewModel.save(it)
+                editing = null
+            },
+            // A slot with no id has never been saved, so there is nothing to
+            // delete and offering it would be a button that did nothing.
+            onDelete = if (entry.id.isBlank()) {
+                null
+            } else {
+                {
+                    viewModel.remove(entry)
+                    editing = null
+                }
+            },
+            onDismiss = { editing = null },
+        )
+    }
 }
 
 /**
- * Whose slot it is carries in the colour of the bar rather than a label,
- * because on a day with eight entries the labels are the noise.
+ * Whose slot it is still carries in the colour of the bar. The toggle already
+ * says whose week this is, but the colour means a glance at a screenshot is
+ * never ambiguous.
  */
 @Composable
-private fun Slot(entry: TimetableEntry, mine: Boolean) {
+private fun Slot(entry: TimetableEntry, mine: Boolean, onClick: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

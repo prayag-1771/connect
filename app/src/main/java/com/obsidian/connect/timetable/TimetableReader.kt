@@ -153,6 +153,7 @@ object TimetableReader {
         return (0 until array.length()).mapNotNull { index ->
             val item = array.optJSONObject(index) ?: return@mapNotNull null
             TimetableEntry(
+                id = java.util.UUID.randomUUID().toString(),
                 day = normaliseDay(item.optString("day")),
                 start = item.optString("start"),
                 end = item.optString("end"),
