@@ -55,8 +55,8 @@ fun JamChooser(
                 Choice(
                     icon = Icons.Filled.MusicNote,
                     title = "Spotify",
-                    detail = "Needs Premium on both phones. Set it up here when " +
-                        "you have it.",
+                    detail = "Connect your account, then jam on it. Playback " +
+                        "control needs Premium.",
                     onClick = onSpotify,
                 )
             }
@@ -96,27 +96,4 @@ private fun Choice(
             )
         }
     }
-}
-
-/**
- * What Spotify needs before it can work, said once and plainly.
- *
- * Deliberately not a silent no-op. Someone who taps Spotify has asked a
- * reasonable question and deserves the actual answer, including the part where
- * it is not something this app can fix on its own.
- */
-@Composable
-fun SpotifyNotReady(onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Spotify needs Premium") },
-        text = {
-            Text(
-                "Spotify only lets another app control playback on a Premium " +
-                    "account, and it has to be Premium on both phones. Once you " +
-                    "both have it, this is where it gets connected.",
-            )
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Got it") } },
-    )
 }

@@ -71,21 +71,33 @@ class JamActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    JamScreen(onBack = { finish() })
+                    JamScreen(
+                        spotify = intent.getBooleanExtra(EXTRA_SPOTIFY, false),
+                        onBack = { finish() },
+                    )
                 }
             }
         }
     }
 
     companion object {
+        private const val EXTRA_SPOTIFY = "spotify"
+
         fun open(context: Context) {
             context.startActivity(Intent(context, JamActivity::class.java))
+        }
+
+        fun openSpotify(context: Context) {
+            context.startActivity(
+                Intent(context, JamActivity::class.java).putExtra(EXTRA_SPOTIFY, true),
+            )
         }
     }
 }
 
 @Composable
 private fun JamScreen(
+    spotify: Boolean,
     onBack: () -> Unit,
     viewModel: JamViewModel = hiltViewModel(),
 ) {
@@ -117,7 +129,29 @@ private fun JamScreen(
     }
 
     DisposableEffect(Unit) {
-        onDispose { player.release() }
+        viewModel.join()
+        onDispose {
+            viewModel.leave()
+            player.release()
+        }
+    }
+
+    // The driver refreshes the stored position every half minute.
+    //
+    // Without it the position is only ever written on a play, a pause or a
+    // seek, and someone joining ten minutes into a track would be told the
+    // position from ten minutes ago plus ten minutes of elapsed time - which
+    // runs off the end of anything shorter than that. Refreshing bounds the
+    // guess to thirty seconds and costs two writes a minute.
+    LaunchedEffect(ready, localPlaying, session?.byUid) {
+        if (!ready || !localPlaying) return@LaunchedEffect
+        if (!viewModel.isDriver(session)) return@LaunchedEffect
+
+        while (true) {
+            delay(30_000)
+            if (!localPlaying) break
+            viewModel.report(true, localPositionMs)
+        }
     }
 
     // Follow whatever the session says. Keyed on the whole thing, so a pause
@@ -172,6 +206,24 @@ private fun JamScreen(
             }
         }
 
+        if (spotify) {
+            SpotifyJamScreen(
+                session = session,
+                onLoad = viewModel::loadSpotify,
+                onProblem = viewModel::showProblem,
+                onReport = viewModel::report,
+            )
+            problem?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+            }
+            return@Column
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -194,7 +246,11 @@ private fun JamScreen(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "Both phones follow whoever touches the controls.",
+                    text = if (viewModel.theyAreHere(session)) {
+                        "They are here too. Either of you can take the controls."
+                    } else {
+                        "Playing. They will drop straight into this when they open it."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

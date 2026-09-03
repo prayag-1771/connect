@@ -38,9 +38,11 @@ class JamRepository @Inject constructor(
         uid: String,
         videoId: String,
         title: String,
+        service: String = JamSession.YOUTUBE,
     ): Result<Unit> = runCatching {
         session(pairingId).set(
             mapOf(
+                "service" to service,
                 "videoId" to videoId,
                 "title" to title,
                 "playing" to false,
@@ -71,6 +73,26 @@ class JamRepository @Inject constructor(
                 "byUid" to uid,
                 "updatedAtMillis" to System.currentTimeMillis(),
             ),
+            com.google.firebase.firestore.SetOptions.merge(),
+        ).await()
+    }
+
+    /**
+     * Says this phone has the jam open.
+     *
+     * arrayUnion rather than read-and-write, because both of you can arrive at
+     * once and a read-modify-write would let one arrival erase the other.
+     */
+    suspend fun join(pairingId: String, uid: String): Result<Unit> = runCatching {
+        session(pairingId).set(
+            mapOf("listeners" to com.google.firebase.firestore.FieldValue.arrayUnion(uid)),
+            com.google.firebase.firestore.SetOptions.merge(),
+        ).await()
+    }
+
+    suspend fun leave(pairingId: String, uid: String): Result<Unit> = runCatching {
+        session(pairingId).set(
+            mapOf("listeners" to com.google.firebase.firestore.FieldValue.arrayRemove(uid)),
             com.google.firebase.firestore.SetOptions.merge(),
         ).await()
     }

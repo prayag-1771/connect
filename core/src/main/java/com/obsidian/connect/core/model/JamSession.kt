@@ -18,7 +18,16 @@ import com.google.firebase.firestore.DocumentId
 data class JamSession(
     @DocumentId val id: String = "",
 
-    /** Empty when nothing is loaded, which is how the screen knows to ask. */
+    /**
+     * Which player this is for.
+     *
+     * Two people have to be running the same one, or a play written by a
+     * YouTube session would be obeyed by a Spotify player holding a completely
+     * different track.
+     */
+    val service: String = YOUTUBE,
+
+    /** A YouTube video id or a Spotify track uri. Empty when nothing is on. */
     val videoId: String = "",
     val title: String = "",
 
@@ -36,9 +45,25 @@ data class JamSession(
     /** Who last touched the controls, so a device can ignore its own echo. */
     val byUid: String = "",
 
+    /**
+     * Who currently has the jam screen open.
+     *
+     * Not who can hear it - who is in the room. Someone who started a track and
+     * walked off leaves it playing for the other person, and the difference
+     * between that and listening together is worth showing.
+     */
+    val listeners: List<String> = emptyList(),
+
     val updatedAtMillis: Long = 0L,
 ) {
     val isLoaded: Boolean get() = videoId.isNotBlank()
+
+    fun isFor(which: String): Boolean = service == which
+
+    companion object {
+        const val YOUTUBE = "youtube"
+        const val SPOTIFY = "spotify"
+    }
 
     /**
      * Where the track should be *now*, not where it was when this was written.

@@ -189,6 +189,24 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
+        <!--
+          Also the target of the Spotify login redirect. singleTask so coming
+          back from the browser lands on the screen that started it rather than
+          stacking a second copy.
+        -->
+        <activity
+            android:name=".jam.SpotifySetupActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:label="Spotify">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="connect" android:host="spotify-callback" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".jam.JamActivity"
             android:exported="false"

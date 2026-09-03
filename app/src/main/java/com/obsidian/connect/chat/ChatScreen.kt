@@ -100,7 +100,8 @@ import com.obsidian.connect.call.CallActivity
 import androidx.compose.material.icons.filled.LibraryMusic
 import com.obsidian.connect.jam.JamActivity
 import com.obsidian.connect.jam.JamChooser
-import com.obsidian.connect.jam.SpotifyNotReady
+import com.obsidian.connect.jam.SpotifySetupActivity
+import com.obsidian.connect.jam.SpotifyStore
 import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.ui.theme.ThemeMode
 import com.obsidian.connect.ui.theme.ChatColors
@@ -211,7 +212,6 @@ fun ChatScreen(
 
     // Which service to jam on, asked before anything is opened.
     var jamChooser by remember { mutableStateOf(false) }
-    var spotifyNotice by remember { mutableStateOf(false) }
 
     var panelOpen by remember { mutableStateOf(false) }
     var chooseOpen by remember { mutableStateOf(false) }
@@ -629,14 +629,15 @@ fun ChatScreen(
             },
             onSpotify = {
                 jamChooser = false
-                spotifyNotice = true
+                // Straight to the jam once it is connected; to setup if not.
+                if (SpotifyStore.isConnected(context)) {
+                    JamActivity.openSpotify(context)
+                } else {
+                    SpotifySetupActivity.open(context)
+                }
             },
             onDismiss = { jamChooser = false },
         )
-    }
-
-    if (spotifyNotice) {
-        SpotifyNotReady(onDismiss = { spotifyNotice = false })
     }
 
     confirmingDelete?.let { message ->

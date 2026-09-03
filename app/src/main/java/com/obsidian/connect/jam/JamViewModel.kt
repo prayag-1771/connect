@@ -62,7 +62,24 @@ class JamViewModel @Inject constructor(
         val uid = authRepository.currentUid ?: return
         _problem.value = null
 
-        viewModelScope.launch { jamRepository.load(pairing, uid, id, title) }
+        viewModelScope.launch {
+            jamRepository.load(pairing, uid, id, title, JamSession.YOUTUBE)
+        }
+    }
+
+    /** Puts a Spotify track on for both of you. */
+    fun loadSpotify(trackUri: String, title: String) {
+        val pairing = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+        _problem.value = null
+
+        viewModelScope.launch {
+            jamRepository.load(pairing, uid, trackUri, title, JamSession.SPOTIFY)
+        }
+    }
+
+    fun showProblem(problem: String?) {
+        _problem.value = problem
     }
 
     /**
@@ -81,6 +98,33 @@ class JamViewModel @Inject constructor(
             jamRepository.update(pairing, uid, playing, positionMs)
         }
     }
+
+    fun join() {
+        val pairing = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+        viewModelScope.launch { jamRepository.join(pairing, uid) }
+    }
+
+    fun leave() {
+        val pairing = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+        viewModelScope.launch { jamRepository.leave(pairing, uid) }
+    }
+
+    /** Whether the other person has the jam open too. */
+    fun theyAreHere(session: JamSession?): Boolean {
+        val me = authRepository.currentUid ?: return false
+        return session?.listeners.orEmpty().any { it != me }
+    }
+
+    /**
+     * Whether this phone is the one currently driving.
+     *
+     * Only the driver refreshes the position, so two phones do not both write
+     * a heartbeat for the same track.
+     */
+    fun isDriver(session: JamSession?): Boolean =
+        session?.byUid == authRepository.currentUid
 
     fun end() {
         val pairing = pairingId.value ?: return
