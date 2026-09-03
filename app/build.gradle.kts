@@ -168,6 +168,7 @@ dependencies {
     // duplicate class. Declaring it as implementation fails the build.
     compileOnly(libs.guava)
 
+    implementation(libs.androidx.webkit)
     implementation(libs.webrtc)
 
     implementation(libs.coil.compose)

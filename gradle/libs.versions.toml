@@ -25,6 +25,7 @@ coil = "2.7.0"
 coroutines = "1.9.0"
 # The Google artifact was pulled from Maven; this is the maintained rebuild.
 webrtc = "125.6422.07"
+webkit = "1.12.1"
 
 junit = "4.13.2"
 androidxJunit = "1.2.1"
@@ -77,6 +78,7 @@ androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterfa
 
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 # Animated GIF decoding; Coil does not handle it without this.
+androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
 webrtc = { group = "io.github.webrtc-sdk", name = "android", version.ref = "webrtc" }
 coil-gif = { group = "io.coil-kt", name = "coil-gif", version.ref = "coil" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }

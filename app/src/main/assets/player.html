@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      html, body { margin:0; padding:0; background:#000; height:100%; }
+      #player { width:100%; height:100%; }
+    </style>
+  </head>
+  <body>
+    <div id="player"></div>
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script>
+      var api = null;
+
+      function onYouTubeIframeAPIReady() {
+        api = new YT.Player('player', {
+          height: '100%',
+          width: '100%',
+          playerVars: {
+            playsinline: 1,
+            controls: 1,
+            rel: 0,
+            modestbranding: 1,
+            // Must match the origin this page is actually served from, which
+            // is why it is served over https by the asset loader rather than
+            // handed to the WebView as raw data. YouTube refuses to embed on
+            // an origin it cannot verify, and reports it as error 152 - which
+            // reads exactly like the video being blocked.
+            origin: 'https://appassets.androidplatform.net'
+          },
+          events: {
+            onReady: function () {
+              api.unMute();
+              api.setVolume(100);
+              console.log('ready, muted=' + api.isMuted());
+              Android.ready();
+            },
+            onError: function (e) {
+              console.log('player error ' + e.data);
+              Android.failed(e.data);
+            },
+            onStateChange: function (e) {
+              if (e.data === YT.PlayerState.PLAYING) Android.state(true);
+              if (e.data === YT.PlayerState.PAUSED) Android.state(false);
+              if (e.data === YT.PlayerState.ENDED) Android.state(false);
+            }
+          }
+        });
+      }
+
+      function load(id, startSeconds, play) {
+        if (!api) return;
+        if (play) {
+          api.loadVideoById(id, startSeconds);
+        } else {
+          api.cueVideoById(id, startSeconds);
+        }
+        api.unMute();
+        api.setVolume(100);
+      }
+
+      function report() {
+        if (!api || !api.getCurrentTime) return;
+        Android.position(api.getCurrentTime());
+      }
+    </script>
+  </body>
+</html>
