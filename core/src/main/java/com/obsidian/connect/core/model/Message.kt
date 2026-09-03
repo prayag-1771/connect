@@ -50,6 +50,15 @@ data class Message(
     val gifUrl: String = "",
 
     /**
+     * Who has starred this, by uid.
+     *
+     * A list rather than a flag because a star is a private opinion about a
+     * shared object — you can keep something without deciding for the other
+     * person that they have kept it too.
+     */
+    val starredBy: List<String> = emptyList(),
+
+    /**
      * Ordering key, set from the sending device's clock.
      *
      * Same reason as [Stroke]: a server timestamp is null on the writing device
@@ -73,6 +82,9 @@ data class Message(
      */
     @get:Exclude
     val isPhoto: Boolean get() = photo || image != null
+
+    /** A function, not a getter, so Firestore does not treat it as a field. */
+    fun isStarredBy(uid: String?): Boolean = uid != null && uid in starredBy
 
     val hasAudio: Boolean get() = audio != null
 

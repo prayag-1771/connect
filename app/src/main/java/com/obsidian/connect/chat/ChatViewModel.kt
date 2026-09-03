@@ -328,6 +328,40 @@ class ChatViewModel @Inject constructor(
     }
 
     /**
+     * Keeps a message, for you.
+     *
+     * The other person's stars are their own; this only ever adds or removes
+     * your own uid.
+     */
+    fun toggleStar(message: Message) {
+        val id = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+
+        viewModelScope.launch {
+            messageRepository.setStarred(
+                pairingId = id,
+                messageId = message.id,
+                uid = uid,
+                starred = !message.isStarredBy(uid),
+            )
+        }
+    }
+
+    /**
+     * Withdraws a message from both sides of the conversation.
+     *
+     * Guarded here so the option is never offered for someone else's message,
+     * and guarded again in the security rules so it cannot be taken anyway.
+     */
+    fun delete(message: Message) {
+        val id = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+        if (message.senderId != uid) return
+
+        viewModelScope.launch { messageRepository.delete(id, message.id) }
+    }
+
+    /**
      * Marks the conversation seen and clears the watch face's dot.
      *
      * Called when the chat is actually on screen rather than when the app

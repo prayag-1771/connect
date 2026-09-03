@@ -26,6 +26,13 @@ service cloud.firestore {
     // document may change with it. Locking the shape this tightly means the
     // permission to erase a photo can never become a permission to rewrite who
     // sent it or when.
+    // Starring is a private opinion recorded on a shared document, so the
+    // field is writable by either member. Nothing else may move with it - a
+    // star must never become a way to edit what somebody said.
+    function onlyChangesStars() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['starredBy']);
+    }
+
     function onlyDropsImage() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['image'])
         && !('image' in request.resource.data);
@@ -71,10 +78,16 @@ service cloud.firestore {
         allow read: if isMember(pairingId);
         allow create: if isMember(pairingId)
           && request.resource.data.senderId == uid();
-        // The only edit a message allows is losing its photo to the recipient's
-        // phone. Text is still permanent — you cannot revise what you said.
-        allow update: if isMember(pairingId) && onlyDropsImage();
-        allow delete: if false;
+        // A message may lose its photo to the recipient's phone, or gain and
+        // lose stars. Its words are still immutable — you can withdraw what
+        // you said, but you cannot quietly rewrite it into something else.
+        allow update: if isMember(pairingId)
+          && (onlyDropsImage() || onlyChangesStars());
+
+        // Only the person who sent it. Enforced here rather than only in the
+        // app, because a rule is the one place a tampered client cannot argue
+        // with.
+        allow delete: if isMember(pairingId) && resource.data.senderId == uid();
       }
 
       // Options put up for the other person to judge.

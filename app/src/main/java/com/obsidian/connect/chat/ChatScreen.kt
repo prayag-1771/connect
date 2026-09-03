@@ -10,6 +10,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,12 +37,18 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.GifBox
 import androidx.compose.material.icons.outlined.Style
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.HideImage
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -158,6 +168,9 @@ fun ChatScreen(
     val gifsLoading by viewModel.gifsLoading.collectAsStateWithLifecycle()
     val saved by viewModel.saved.collectAsStateWithLifecycle()
 
+    // The message a long press is asking about. Null when nothing is held.
+    var chosen by remember { mutableStateOf<Message?>(null) }
+
     var panelOpen by remember { mutableStateOf(false) }
     var chooseOpen by remember { mutableStateOf(false) }
     var panelTab by remember { mutableStateOf(AttachmentTab.Gifs) }
@@ -261,7 +274,9 @@ fun ChatScreen(
                     Bubble(
                         message = message,
                         mine = message.senderId == myUid,
+                        starred = message.isStarredBy(myUid),
                         status = deliveryStatusOf(message, partnerReceipt),
+                        onLongPress = { chosen = message },
                         playing = player.isPlaying(message.id),
                         progress = if (playingId == message.id) playProgress else 0f,
                         onTogglePlay = {
@@ -441,20 +456,113 @@ fun ChatScreen(
             )
         }
     }
+
+    chosen?.let { message ->
+        MessageActions(
+            starred = message.isStarredBy(myUid),
+            // Deleting takes it off both phones, so it is only ever offered
+            // for your own. The rules refuse it for anyone else's regardless.
+            deletable = message.senderId == myUid,
+            onStar = {
+                viewModel.toggleStar(message)
+                chosen = null
+            },
+            onDelete = {
+                viewModel.delete(message)
+                chosen = null
+            },
+            onDismiss = { chosen = null },
+        )
+    }
 }
 
+/**
+ * What a held message offers: keep it, or take it back.
+ *
+ * A sheet rather than a menu floating by the bubble. Delete removes the
+ * message from both phones, which is worth a moment of deliberate attention
+ * rather than something to be brushed against near the edge of a conversation.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MessageActions(
+    starred: Boolean,
+    deletable: Boolean,
+    onStar: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp)
+                .navigationBarsPadding(),
+        ) {
+            ActionRow(
+                icon = if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                label = if (starred) "Remove star" else "Star this",
+                tint = MaterialTheme.colorScheme.onSurface,
+                onClick = onStar,
+            )
+
+            if (deletable) {
+                ActionRow(
+                    icon = Icons.Outlined.Delete,
+                    label = "Delete for both of us",
+                    tint = MaterialTheme.colorScheme.error,
+                    onClick = onDelete,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tint: Color,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = tint)
+        Text(text = label, style = MaterialTheme.typography.bodyLarge, color = tint)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Bubble(
     message: Message,
     mine: Boolean,
+    starred: Boolean,
     status: DeliveryStatus,
     playing: Boolean,
     progress: Float,
     onTogglePlay: () -> Unit,
     onSeek: (Float) -> Unit,
+    onLongPress: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            // Long press rather than a tap: a tap on a photo opens it, and on
+            // a voice note plays it, so the gesture has to be one that nothing
+            // in a bubble has already claimed.
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+                onLongClick = onLongPress,
+            ),
         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
     ) {
         Column(
@@ -557,6 +665,14 @@ private fun Bubble(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                if (starred) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = "Starred",
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
                 if (message.createdAtMillis > 0) {
                     Text(
                         text = timeFormat.format(Date(message.createdAtMillis)),

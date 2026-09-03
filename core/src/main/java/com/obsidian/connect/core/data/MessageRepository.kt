@@ -117,6 +117,40 @@ class MessageRepository @Inject constructor(
         }
 
     /**
+     * Stars or unstars a message for one person.
+     *
+     * Array union and removal rather than reading the list and writing it
+     * back: both people can be starring things at the same moment, and a
+     * read-modify-write would let one of them silently undo the other.
+     */
+    suspend fun setStarred(
+        pairingId: String,
+        messageId: String,
+        uid: String,
+        starred: Boolean,
+    ): Result<Unit> = runCatching {
+        messages(pairingId).document(messageId).update(
+            "starredBy",
+            if (starred) FieldValue.arrayUnion(uid) else FieldValue.arrayRemove(uid),
+        ).await()
+    }
+
+    /**
+     * Removes a message from the conversation, for both people.
+     *
+     * There is no "delete for me". A conversation the two of you do not see
+     * the same version of is a worse thing than one you cannot tidy privately.
+     *
+     * Whether this is *allowed* is decided by the security rules, not here -
+     * only the sender may delete, and that has to hold even against a phone
+     * that has been tampered with.
+     */
+    suspend fun delete(pairingId: String, messageId: String): Result<Unit> =
+        runCatching {
+            messages(pairingId).document(messageId).delete().await()
+        }
+
+    /**
      * Sends a voice note.
      *
      * [durationMs] is stored rather than derived on playback, so a bubble can
