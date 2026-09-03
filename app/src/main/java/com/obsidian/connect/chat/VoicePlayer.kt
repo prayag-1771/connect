@@ -5,7 +5,7 @@ import android.media.MediaPlayer
 import java.io.File
 
 /**
- * Plays voice notes, one at a time.
+ * Plays voice notes, one at a time, and can be scrubbed.
  *
  * Deliberately single-instance: starting a second note stops the first. Two
  * people talking over each other out of one phone speaker is never what was
@@ -22,23 +22,50 @@ class VoicePlayer(private val context: Context) {
 
     fun currentlyPlaying(): String? = playingId
 
+    /** Where playback has reached, in milliseconds. */
+    fun positionMs(): Int = runCatching { player?.currentPosition ?: 0 }.getOrDefault(0)
+
+    fun durationMs(): Int = runCatching { player?.duration ?: 0 }.getOrDefault(0)
+
+    fun isPlaying(id: String): Boolean =
+        playingId == id && runCatching { player?.isPlaying == true }.getOrDefault(false)
+
     /**
-     * Starts [id], or stops it if it is already playing.
+     * Starts [id], or pauses it if it is already running.
      *
-     * [onFinished] fires on natural completion and on stop, so the caller can
-     * drop its playing state without tracking two separate paths.
+     * Pausing rather than stopping, so the position survives — the whole point
+     * of being able to scrub is not losing your place.
      */
     fun toggle(id: String, bytes: ByteArray, onFinished: () -> Unit) {
         if (playingId == id) {
-            stop()
-            onFinished()
+            val active = player ?: return
+            runCatching {
+                if (active.isPlaying) active.pause() else active.start()
+            }
             return
         }
 
         stop()
+        prepare(id, bytes, onFinished)?.start()
+    }
 
+    /**
+     * Jumps to a point in a note, loading it first if it is not the one
+     * currently open. Scrubbing a note you have not started should work.
+     */
+    fun seekTo(id: String, bytes: ByteArray, positionMs: Int, onFinished: () -> Unit) {
+        if (playingId != id) {
+            stop()
+            prepare(id, bytes, onFinished)
+        }
+        runCatching { player?.seekTo(positionMs) }
+    }
+
+    private fun prepare(id: String, bytes: ByteArray, onFinished: () -> Unit): MediaPlayer? {
         val file = File(context.cacheDir, "play_$id.m4a")
-        if (!file.exists()) runCatching { file.writeBytes(bytes) }.onFailure { return }
+        if (!file.exists()) {
+            runCatching { file.writeBytes(bytes) }.onFailure { return null }
+        }
 
         val created = runCatching {
             MediaPlayer().apply {
@@ -48,17 +75,17 @@ class VoicePlayer(private val context: Context) {
                     onFinished()
                 }
                 prepare()
-                start()
             }
         }.getOrNull()
 
         if (created == null) {
             onFinished()
-            return
+            return null
         }
 
         player = created
         playingId = id
+        return created
     }
 
     fun stop() {

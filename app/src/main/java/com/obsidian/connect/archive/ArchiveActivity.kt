@@ -2,7 +2,9 @@ package com.obsidian.connect.archive
 
 import android.graphics.BitmapFactory
 import android.os.Bundle
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -48,6 +50,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import com.obsidian.connect.ui.theme.ConnectTheme
+import com.obsidian.connect.viewer.PhotoViewerActivity
 import dagger.hilt.android.AndroidEntryPoint
 
 /**
@@ -80,8 +83,19 @@ private fun ArchiveScreen(onBack: () -> Unit) {
     var reload by remember { mutableIntStateOf(0) }
     val entries = remember(reload) { PhotoArchive.list(context) }
 
-    var viewing by remember { mutableStateOf<PhotoArchive.Entry?>(null) }
-    var confirmingDelete by remember { mutableStateOf<PhotoArchive.Entry?>(null) }
+    var pendingDelete by remember { mutableStateOf<PhotoArchive.Entry?>(null) }
+
+    // The viewer reports back whether the photo was deleted from inside it,
+    // so the grid can drop it without re-listing on every recomposition.
+    val viewer = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (PhotoViewerActivity.wasDeleted(result.data)) {
+            pendingDelete?.let { PhotoArchive.delete(it) }
+            reload++
+        }
+        pendingDelete = null
+    }
 
     Scaffold(
         topBar = {
@@ -118,47 +132,24 @@ private fun ArchiveScreen(onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 items(items = entries, key = { it.file.path }) { entry ->
-                    Thumbnail(entry = entry, onClick = { viewing = entry })
+                    Thumbnail(
+                        entry = entry,
+                        onClick = {
+                            pendingDelete = entry
+                            viewer.launch(
+                                PhotoViewerActivity.intent(
+                                    context = context,
+                                    path = entry.file.path,
+                                    deletable = true,
+                                ),
+                            )
+                        },
+                    )
                 }
             }
         }
     }
 
-    viewing?.let { entry ->
-        FullPhoto(
-            entry = entry,
-            onDismiss = { viewing = null },
-            onDelete = { confirmingDelete = entry },
-        )
-    }
-
-    confirmingDelete?.let { entry ->
-        AlertDialog(
-            onDismissRequest = { confirmingDelete = null },
-            title = { Text("Delete this photo?") },
-            // Worth asking: this is the only copy. It was never in the gallery,
-            // and the other person's copy lives on their phone, not here.
-            text = {
-                Text(
-                    "This is the only copy on this phone. It is not in your " +
-                        "gallery, so it cannot be recovered.",
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        PhotoArchive.delete(entry)
-                        confirmingDelete = null
-                        viewing = null
-                        reload++
-                    },
-                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmingDelete = null }) { Text("Keep it") }
-            },
-        )
-    }
 }
 
 @Composable
@@ -186,49 +177,6 @@ private fun Thumbnail(entry: PhotoArchive.Entry, onClick: () -> Unit) {
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
-            )
-        }
-    }
-}
-
-@Composable
-private fun FullPhoto(
-    entry: PhotoArchive.Entry,
-    onDismiss: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val bitmap = remember(entry.file.path) {
-        BitmapFactory.decodeFile(entry.file.path)?.asImageBitmap()
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            // Opaque, or the grid shows through behind the photo.
-            .background(Color.Black.copy(alpha = 0.96f))
-            .clickable(onClick = onDismiss),
-        contentAlignment = Alignment.Center,
-    ) {
-        Image(
-            bitmap = bitmap ?: return,
-            contentDescription = "Photo, tap to close",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        // Sits over the photo rather than in a menu: deleting is the only
-        // thing there is to do here besides closing.
-        IconButton(
-            onClick = onDelete,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .statusBarsPadding()
-                .padding(8.dp),
-        ) {
-            Icon(
-                Icons.Outlined.Delete,
-                contentDescription = "Delete this photo",
-                tint = Color.White,
             )
         }
     }

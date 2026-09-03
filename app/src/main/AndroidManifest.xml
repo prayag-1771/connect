@@ -71,6 +71,11 @@
         </activity>
 
         <activity
+            android:name=".viewer.PhotoViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Connect" />
+
+        <activity
             android:name=".editor.PhotoEditorActivity"
             android:exported="false"
             android:theme="@style/Theme.Connect"

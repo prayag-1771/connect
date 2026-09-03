@@ -234,23 +234,37 @@ class ChatViewModel @Inject constructor(
         return started
     }
 
-    /**
-     * Ends the recording and sends it.
-     *
-     * A clip under about a second is dropped rather than sent — that is almost
-     * always a mis-tap, and a stray blip is more annoying to receive than a
-     * lost recording is to redo.
-     */
-    fun stopRecordingAndSend() {
-        _recording.value = false
-        val clip = recorder.stop() ?: return
+    private val _pendingVoice = MutableStateFlow<VoiceRecorder.Recording?>(null)
+    val pendingVoice: StateFlow<VoiceRecorder.Recording?> = _pendingVoice.asStateFlow()
 
+    /**
+     * Ends the recording and holds it for review.
+     *
+     * Not sent straight away. A voice note cannot be skimmed before it goes the
+     * way a typed message can be re-read, so the one chance to catch a bad take
+     * is before it leaves.
+     *
+     * A clip under about a second is dropped outright — that is almost always
+     * a mis-tap, and offering to review a blip is worse than discarding it.
+     */
+    fun stopRecording() {
+        _recording.value = false
+        _pendingVoice.value = recorder.stop()
+    }
+
+    fun sendPendingVoice() {
+        val clip = _pendingVoice.value ?: return
         val id = pairingId.value ?: return
         val uid = authRepository.currentUid ?: return
 
+        _pendingVoice.value = null
         viewModelScope.launch {
             messageRepository.sendAudio(id, uid, clip.bytes, clip.durationMs)
         }
+    }
+
+    fun discardPendingVoice() {
+        _pendingVoice.value = null
     }
 
     fun cancelRecording() {

@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
@@ -41,12 +42,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -71,6 +74,8 @@ import kotlinx.coroutines.launch
 import com.obsidian.connect.core.model.DeliveryStatus
 import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.deliveryStatusOf
+import com.obsidian.connect.viewer.PhotoViewerActivity
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -83,6 +88,7 @@ fun ChatScreen(
 ) {
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     val recording by viewModel.recording.collectAsStateWithLifecycle()
+    val pendingVoice by viewModel.pendingVoice.collectAsStateWithLifecycle()
     val myUid = viewModel.myUid
     val context = LocalContext.current
 
@@ -171,14 +177,24 @@ fun ChatScreen(
 
     val player = remember { VoicePlayer(context) }
     var playingId by remember { mutableStateOf<String?>(null) }
+    var playProgress by remember { mutableFloatStateOf(0f) }
+
+    // Polled rather than driven by a listener: MediaPlayer offers no position
+    // callback, and ten frames a second is enough for a bar this size.
+    LaunchedEffect(playingId) {
+        val id = playingId ?: return@LaunchedEffect
+        while (player.currentlyPlaying() == id) {
+            val total = player.durationMs()
+            playProgress = if (total > 0) player.positionMs() / total.toFloat() else 0f
+            delay(100)
+        }
+        playProgress = 0f
+    }
 
     // Released with the screen, or a note carries on playing after you leave.
     DisposableEffect(Unit) {
         onDispose { player.stop() }
     }
-
-    // Whether the list has been positioned at least once.
-    var positioned by remember { mutableStateOf(false) }
 
     // Marking read here rather than at app launch: opening the camera tab
     // should not quietly clear the dot for messages nobody has looked at.
@@ -186,20 +202,13 @@ fun ChatScreen(
         viewModel.markRead()
         viewModel.archiveIncoming(messages)
         viewModel.markProgress(messages)
-        if (messages.isEmpty()) return@LaunchedEffect
-
-        if (positioned) {
-            // A message arrived while you were looking; sliding to it shows
-            // that something moved.
-            listState.animateScrollToItem(messages.lastIndex)
-        } else {
-            // Opening the tab should simply start at the bottom. Animating
-            // here scrolls the whole history past you first, which reads as
-            // the screen running away.
-            listState.scrollToItem(messages.lastIndex)
-            positioned = true
-        }
     }
+
+    // Newest first, drawn bottom-up. Scrolling to the end after layout meant
+    // one frame rendered at the top of the history before jumping — the flash
+    // of the oldest messages every time the tab opened. Reversed, the list
+    // starts where it should and never has to move.
+    val ordered = remember(messages) { messages.asReversed() }
 
     // The scaffold reserves room for the bottom navigation bar, and the
     // keyboard covers that bar when it opens. Adding both leaves a gap the
@@ -244,17 +253,27 @@ fun ChatScreen(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
+                reverseLayout = true,
             ) {
-                items(items = messages, key = { it.id }) { message ->
+                items(items = ordered, key = { it.id }) { message ->
                     Bubble(
                         message = message,
                         mine = message.senderId == myUid,
                         status = deliveryStatusOf(message, partnerReceipt),
-                        playing = playingId == message.id,
+                        playing = player.isPlaying(message.id),
+                        progress = if (playingId == message.id) playProgress else 0f,
                         onTogglePlay = {
                             message.audioBytes?.let { bytes ->
                                 player.toggle(message.id, bytes) { playingId = null }
                                 playingId = player.currentlyPlaying()
+                            }
+                        },
+                        onSeek = { fraction ->
+                            message.audioBytes?.let { bytes ->
+                                val target = (fraction * message.audioDurationMs).toInt()
+                                player.seekTo(message.id, bytes, target) { playingId = null }
+                                playingId = player.currentlyPlaying()
+                                playProgress = fraction
                             }
                         },
                     )
@@ -290,9 +309,17 @@ fun ChatScreen(
             )
         }
 
+        pendingVoice?.let { clip ->
+            VoiceReview(
+                clip = clip,
+                onDiscard = viewModel::discardPendingVoice,
+                onSend = viewModel::sendPendingVoice,
+            )
+        }
+
         if (recording) {
             Text(
-                text = "Recording — tap stop to send",
+                text = "Recording — tap stop to review it",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
@@ -348,7 +375,7 @@ fun ChatScreen(
                 FilledIconButton(
                     onClick = {
                         when {
-                            recording -> viewModel.stopRecordingAndSend()
+                            recording -> viewModel.stopRecording()
 
                             ContextCompat.checkSelfPermission(
                                 context,
@@ -420,7 +447,9 @@ private fun Bubble(
     mine: Boolean,
     status: DeliveryStatus,
     playing: Boolean,
+    progress: Float,
     onTogglePlay: () -> Unit,
+    onSeek: (Float) -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -455,13 +484,19 @@ private fun Bubble(
                     }
                 }
                 bitmap?.let {
+                    val bubbleContext = LocalContext.current
                     Image(
                         bitmap = it,
-                        contentDescription = "Photo",
+                        contentDescription = "Photo, tap to open",
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .widthIn(max = 240.dp)
-                            .clip(RoundedCornerShape(12.dp)),
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                message.bytes?.let { bytes ->
+                                    PhotoViewerActivity.open(bubbleContext, bytes)
+                                }
+                            },
                     )
                 }
             }
@@ -481,8 +516,10 @@ private fun Bubble(
                 VoiceNote(
                     durationMs = message.audioDurationMs,
                     playing = playing,
+                    progress = progress,
                     mine = mine,
                     onToggle = onTogglePlay,
+                    onSeek = onSeek,
                 )
             }
 
@@ -525,12 +562,47 @@ private fun Bubble(
  * Length comes from the stored duration rather than from decoding the clip, so
  * a list of notes lays out without touching the audio at all.
  */
+/**
+ * A recording waiting to be sent or thrown away.
+ *
+ * A voice note cannot be skimmed before it goes the way a typed message can be
+ * re-read, so this is the only chance to catch a bad take.
+ */
+@Composable
+private fun VoiceReview(
+    clip: VoiceRecorder.Recording,
+    onDiscard: () -> Unit,
+    onSend: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = "Voice note  ${formatDuration(clip.durationMs)}",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onDiscard) {
+            Text("Discard", color = MaterialTheme.colorScheme.error)
+        }
+        FilledIconButton(onClick = onSend) {
+            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send the voice note")
+        }
+    }
+}
+
 @Composable
 private fun VoiceNote(
     durationMs: Long,
     playing: Boolean,
+    progress: Float,
     mine: Boolean,
     onToggle: () -> Unit,
+    onSeek: (Float) -> Unit,
 ) {
     val tint = if (mine) {
         MaterialTheme.colorScheme.onPrimaryContainer
@@ -540,17 +612,27 @@ private fun VoiceNote(
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.clickable(onClick = onToggle),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.widthIn(min = 180.dp),
     ) {
         Icon(
-            imageVector = if (playing) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-            contentDescription = if (playing) "Stop" else "Play",
+            imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            contentDescription = if (playing) "Pause" else "Play",
             tint = tint,
+            modifier = Modifier.clickable(onClick = onToggle),
         )
+
+        // Draggable, so a note can be replayed from a particular moment
+        // instead of only from the beginning.
+        Slider(
+            value = progress.coerceIn(0f, 1f),
+            onValueChange = onSeek,
+            modifier = Modifier.weight(1f),
+        )
+
         Text(
             text = formatDuration(durationMs),
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.labelMedium,
             color = tint,
         )
     }

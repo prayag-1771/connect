@@ -68,6 +68,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.obsidian.connect.core.model.Choice
 import com.obsidian.connect.editor.EditPhotoContract
+import com.obsidian.connect.viewer.PhotoViewerActivity
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 
@@ -387,8 +388,10 @@ private fun ChoiceCard(
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                // Room at the top for the bin, which sits outside the card.
-                .padding(top = 20.dp),
+                // Deep enough for the whole delete button. At 20dp the button
+                // overflowed onto the card, which is what made a white icon
+                // disappear against it.
+                .padding(top = BIN_STRIP),
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
         ) {
@@ -399,11 +402,19 @@ private fun ChoiceCard(
                     }
                 }
 
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                val cardContext = LocalContext.current
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .clickable {
+                            choice.bytes?.let { PhotoViewerActivity.open(cardContext, it) }
+                        },
+                ) {
                     bitmap?.let {
                         Image(
                             bitmap = it,
-                            contentDescription = choice.note.ifBlank { "An option" },
+                            contentDescription = choice.note.ifBlank { "An option, tap to open" },
                             // Fit, not Crop. You are being asked to judge the
                             // thing in the photo; cropping its edges away to
                             // fill the card can remove the part being decided
@@ -431,23 +442,17 @@ private fun ChoiceCard(
             }
         }
 
-        // Outside the card, top right, as asked. On its own dark disc because
-        // a white icon over the card's own light corner was all but invisible.
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(4.dp)
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.55f))
-                .clickable { onDelete(choice) },
-            contentAlignment = Alignment.Center,
+        // Sits in the gap above the card, not over it — which is why it can
+        // stay plain white: the backdrop behind it is the dimmed overlay, not
+        // the card's own light corner.
+        IconButton(
+            onClick = { onDelete(choice) },
+            modifier = Modifier.align(Alignment.TopEnd),
         ) {
             Icon(
                 Icons.Outlined.Delete,
                 contentDescription = "Delete this option",
                 tint = Color.White,
-                modifier = Modifier.size(20.dp),
             )
         }
     }
@@ -519,7 +524,9 @@ private fun AddCard(
 ) {
     Box(modifier = modifier.fillMaxSize().padding(vertical = 12.dp)) {
         Surface(
-            modifier = Modifier.fillMaxSize().padding(top = 20.dp),
+            // Same strip a real card leaves for its bin, so the two line up
+            // as you swipe between them.
+            modifier = Modifier.fillMaxSize().padding(top = BIN_STRIP),
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
         ) {
@@ -603,5 +610,8 @@ private fun AddOption(
         Text(text = label, style = MaterialTheme.typography.labelMedium)
     }
 }
+
+/** Height of the gap above each card, sized to hold the delete button. */
+private val BIN_STRIP = 48.dp
 
 private val Liked = Color(0xFF3DDC84)
