@@ -27,6 +27,7 @@ class JamPlayer(
     private val onReady: () -> Unit,
     private val onStateChange: (playing: Boolean) -> Unit,
     private val onPositionMs: (Long) -> Unit,
+    private val onError: (String) -> Unit = {},
 ) {
     val view: WebView = WebView(context).apply {
         settings.javaScriptEnabled = true
@@ -57,13 +58,16 @@ class JamPlayer(
 
         @JavascriptInterface
         fun position(seconds: Double) = view.post { onPositionMs((seconds * 1000).toLong()) }
+
+        @JavascriptInterface
+        fun failed(code: Int) = view.post { onError(explain(code)) }
     }
 
     fun load(videoId: String, startMs: Long, play: Boolean) {
         run("load('$videoId', ${startMs / 1000.0}, $play)")
     }
 
-    fun play() = run("api && api.playVideo()")
+    fun play() = run("api && (api.unMute(), api.setVolume(100), api.playVideo())")
 
     fun pause() = run("api && api.pauseVideo()")
 
@@ -77,6 +81,25 @@ class JamPlayer(
             view.loadUrl("about:blank")
             view.destroy()
         }
+    }
+
+    /**
+     * What a YouTube error code actually means to somebody holding a phone.
+     *
+     * 101 and 150 are the same refusal reported twice over the years, and 152
+     * is the current one: the video is not allowed to play inside another app.
+     * A great many official music videos are published that way, so this is the
+     * common case rather than an edge case, and saying so is more use than a
+     * number.
+     */
+    private fun explain(code: Int): String = when (code) {
+        101, 150, 152 -> "That video will not play outside YouTube. The owner " +
+            "blocked embedding - most official music videos are. Try another " +
+            "upload of the same song."
+        100 -> "That video does not exist or was removed."
+        2 -> "That link was not something YouTube recognised."
+        5 -> "The player could not handle that video."
+        else -> "YouTube would not play that one (error $code)."
     }
 
     private fun run(js: String) {
@@ -118,19 +141,23 @@ class JamPlayer(
                         playsinline: 1,
                         controls: 1,
                         rel: 0,
-                        modestbranding: 1,
-                        // The API refuses to start when it cannot match the
-                        // embedding origin, and a page loaded from data has
-                        // none unless it is stated here.
-                        origin: 'https://www.youtube.com'
+                        modestbranding: 1
                       },
                       events: {
                         onReady: function () {
-                          console.log('player ready');
+                          // Autoplay is only permitted muted. The player starts
+                          // that way whether or not it was asked to, so sound
+                          // has to be turned back on by hand - otherwise the
+                          // video runs correctly and silently, which looks
+                          // exactly like nothing happening.
+                          api.unMute();
+                          api.setVolume(100);
+                          console.log('ready, muted=' + api.isMuted());
                           Android.ready();
                         },
                         onError: function (e) {
                           console.log('player error ' + e.data);
+                          Android.failed(e.data);
                         },
                         onStateChange: function (e) {
                           if (e.data === YT.PlayerState.PLAYING) Android.state(true);
@@ -148,6 +175,11 @@ class JamPlayer(
                     } else {
                       api.cueVideoById(id, startSeconds);
                     }
+                    // Loading a new video can re-mute it, so this is repeated
+                    // rather than relied on from onReady alone.
+                    api.unMute();
+                    api.setVolume(100);
+                    console.log('load ' + id + ' muted=' + api.isMuted());
                   }
 
                   function report() {

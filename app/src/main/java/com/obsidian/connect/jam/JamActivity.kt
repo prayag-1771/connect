@@ -143,6 +143,7 @@ private fun JamScreen(
                 if (!applying) viewModel.report(playing, localPositionMs)
             },
             onPositionMs = { localPositionMs = it },
+            onError = { viewModel.showProblem(it) },
         )
     }
 
