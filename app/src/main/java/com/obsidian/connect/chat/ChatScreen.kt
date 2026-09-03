@@ -97,6 +97,10 @@ import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.deliveryStatusOf
 import androidx.compose.material.icons.filled.VideoCall
 import com.obsidian.connect.call.CallActivity
+import androidx.compose.material.icons.filled.LibraryMusic
+import com.obsidian.connect.jam.JamActivity
+import com.obsidian.connect.jam.JamChooser
+import com.obsidian.connect.jam.SpotifyNotReady
 import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.ui.theme.ThemeMode
 import com.obsidian.connect.ui.theme.ChatColors
@@ -204,6 +208,10 @@ fun ChatScreen(
 
     // Held between choosing to delete and confirming it.
     var confirmingDelete by remember { mutableStateOf<Message?>(null) }
+
+    // Which service to jam on, asked before anything is opened.
+    var jamChooser by remember { mutableStateOf(false) }
+    var spotifyNotice by remember { mutableStateOf(false) }
 
     var panelOpen by remember { mutableStateOf(false) }
     var chooseOpen by remember { mutableStateOf(false) }
@@ -323,12 +331,21 @@ fun ChatScreen(
             // Calling on the left, deciding on the right. Two unrelated things,
             // kept at opposite ends so neither is ever hit by mistake while
             // reaching for the other.
-            IconButton(onClick = { CallActivity.place(context) }) {
-                Icon(
-                    imageVector = Icons.Filled.VideoCall,
-                    contentDescription = "Video call",
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { CallActivity.place(context) }) {
+                    Icon(
+                        imageVector = Icons.Filled.VideoCall,
+                        contentDescription = "Video call",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                IconButton(onClick = { jamChooser = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.LibraryMusic,
+                        contentDescription = "Listen together",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
 
             TextButton(onClick = { chooseOpen = true }) {
@@ -602,6 +619,24 @@ fun ChatScreen(
             },
             onDismiss = { chosen = null },
         )
+    }
+
+    if (jamChooser) {
+        JamChooser(
+            onYouTube = {
+                jamChooser = false
+                JamActivity.open(context)
+            },
+            onSpotify = {
+                jamChooser = false
+                spotifyNotice = true
+            },
+            onDismiss = { jamChooser = false },
+        )
+    }
+
+    if (spotifyNotice) {
+        SpotifyNotReady(onDismiss = { spotifyNotice = false })
     }
 
     confirmingDelete?.let { message ->

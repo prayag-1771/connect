@@ -190,6 +190,11 @@
             android:foregroundServiceType="mediaProjection" />
 
         <activity
+            android:name=".jam.JamActivity"
+            android:exported="false"
+            android:label="Jam" />
+
+        <activity
             android:name=".profile.SettingsActivity"
             android:exported="false"
             android:label="Settings" />

@@ -151,6 +151,12 @@ service cloud.firestore {
         allow read, write: if isMember(pairingId);
       }
 
+      // The shared player. Either member may control it - a jam where one of
+      // you holds the remote is not a jam.
+      match /jam/{document=**} {
+        allow read, write: if isMember(pairingId);
+      }
+
       match /strokes/{strokeId} {
         allow read: if isMember(pairingId);
         allow create: if isMember(pairingId)
