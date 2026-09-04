@@ -114,8 +114,13 @@ object ChatArchive {
             if (message.hasChoiceRef) append("[about a card] ")
 
             when {
-                message.isPhoto && message.text.isBlank() -> append("<photo>")
-                message.isPhoto -> append("<photo> ${message.text}")
+                // Named by message id, which is also what the file in the zip
+                // is called - so a line and its picture can be matched without
+                // guessing from timestamps.
+                message.isPhoto && message.text.isBlank() ->
+                    append("<photo: ${message.id}.jpg>")
+
+                message.isPhoto -> append("<photo: ${message.id}.jpg> ${message.text}")
                 message.hasAudio -> append("<voice note, ${message.audioDurationMs / 1000}s>")
                 message.hasGif -> append("<gif> ${message.gifUrl}")
                 else -> append(message.text)

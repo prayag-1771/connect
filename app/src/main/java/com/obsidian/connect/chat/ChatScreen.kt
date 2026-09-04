@@ -713,8 +713,8 @@ fun ChatScreen(
             title = { Text("Download the older chat?") },
             text = {
                 Text(
-                    "A text file goes into your Downloads folder, with dates, " +
-                        "times and who said what.",
+                    "A zip goes into your Downloads folder: the conversation " +
+                        "with dates and times, plus every photo kept on this phone.",
                 )
             },
             confirmButton = {

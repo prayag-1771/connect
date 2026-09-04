@@ -84,9 +84,9 @@ fun DownloadChatCard(modifier: Modifier = Modifier) {
             title = { Text("Download the older chat?") },
             text = {
                 Text(
-                    "A text file goes into your Downloads folder, with dates, " +
-                        "times and who said what. Anything already there is " +
-                        "left alone.",
+                    "A zip goes into your Downloads folder: the conversation " +
+                        "with dates, times and who said what, plus every photo " +
+                        "kept on this phone. Anything already there is left alone.",
                 )
             },
             confirmButton = {

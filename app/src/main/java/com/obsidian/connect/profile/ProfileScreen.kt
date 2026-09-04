@@ -123,8 +123,6 @@ fun ProfileScreen(
             Text("  Timetable")
         }
 
-        DownloadChatCard()
-
         AppearanceCard(
             chatTheme = chatTheme,
             onChatTheme = viewModel::setChatTheme,
@@ -160,6 +158,8 @@ fun ProfileScreen(
                 )
             }
         }
+
+        DownloadChatCard()
 
         state.error?.let { message ->
             Text(
