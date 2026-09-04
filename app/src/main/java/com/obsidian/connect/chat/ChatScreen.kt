@@ -158,9 +158,20 @@ fun ChatScreen(
 
     // The system photo picker needs no storage permission at all — it hands
     // back a single grant for exactly what was chosen.
+    //
+    // One photo still goes through the editor, because that is where cropping
+    // and drawing live and a single photo is usually the one worth fussing
+    // over. Several go straight out: opening the editor ten times in a row
+    // turns sending an afternoon's photos into a chore.
     val picker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri -> uri?.let(::openEditor) }
+        ActivityResultContracts.PickMultipleVisualMedia(MAX_PHOTOS_AT_ONCE),
+    ) { uris ->
+        when {
+            uris.isEmpty() -> Unit
+            uris.size == 1 -> openEditor(uris.first())
+            else -> viewModel.sendPhotos(uris)
+        }
+    }
 
     var pendingCapture by remember { mutableStateOf<Uri?>(null) }
     val camera = rememberLauncherForActivityResult(
@@ -289,6 +300,28 @@ fun ChatScreen(
     // starts where it should and never has to move.
     val ordered = remember(messages) { messages.asReversed() }
 
+    // Photos picked together are separate documents — each carries its own
+    // bytes and a document is capped — but they were one action, and five
+    // bubbles in a row is five times the scrolling for one moment. Consecutive
+    // messages sharing a batch id are drawn as a single block.
+    val rows: List<List<Message>> = remember(ordered) {
+        buildList {
+            var i = 0
+            while (i < ordered.size) {
+                val head = ordered[i]
+                if (head.inAlbum) {
+                    var end = i
+                    while (end < ordered.size && ordered[end].albumId == head.albumId) end++
+                    add(ordered.subList(i, end).toList())
+                    i = end
+                } else {
+                    add(listOf(head))
+                    i++
+                }
+            }
+        }
+    }
+
     // Reversed layout, so index zero is the newest and sits at the bottom.
     //
     // Only follows when you were already near the bottom. Yanking someone back
@@ -314,9 +347,9 @@ fun ChatScreen(
     // reference to something older has nothing to scroll to. Saying so beats
     // scrolling somewhere arbitrary and leaving someone to wonder what they
     // are looking at.
-    LaunchedEffect(spotlight, ordered) {
+    LaunchedEffect(spotlight, rows) {
         val target = spotlight ?: return@LaunchedEffect
-        val index = ordered.indexOfFirst { it.id == target }
+        val index = rows.indexOfFirst { row -> row.any { it.id == target } }
 
         if (index < 0) {
             Toast.makeText(
@@ -464,7 +497,12 @@ fun ChatScreen(
                     }
                 }
 
-                items(items = ordered, key = { it.id }) { message ->
+                items(items = rows, key = { it.first().id }) { row ->
+                    // An album answers as one thing: replying to it, starring
+                    // it or opening its menu acts on the first photo, which is
+                    // the one the quote will show.
+                    val message = row.first()
+
                     SwipeToReply(
                         mine = message.senderId == myUid,
                         onReply = {
@@ -474,6 +512,7 @@ fun ChatScreen(
                     ) {
                     Bubble(
                         message = message,
+                        album = row,
                         mine = message.senderId == myUid,
                         // Either person's star shows for both. Something one
                         // of you kept is kept.
@@ -502,7 +541,7 @@ fun ChatScreen(
                                 playProgress = fraction
                             }
                         },
-                        spotlit = spotlight == message.id,
+                        spotlit = row.any { it.id == spotlight },
                     )
                     }
                 }
@@ -911,6 +950,8 @@ private fun ActionRow(
 @Composable
 private fun Bubble(
     message: Message,
+    /** Everything sent in this batch, or just [message] on its own. */
+    album: List<Message> = listOf(message),
     mine: Boolean,
     starred: Boolean,
     status: DeliveryStatus,
@@ -1009,7 +1050,9 @@ private fun Bubble(
                 Spacer(Modifier.height(6.dp))
             }
 
-            if (message.isPhoto) {
+            if (message.isPhoto && album.size > 1) {
+                PhotoAlbum(messages = album)
+            } else if (message.isPhoto) {
                 val bubbleContext = LocalContext.current
 
                 // The document first, this phone's own copy second.
@@ -1395,6 +1438,15 @@ private fun TypingLine(palette: ChatColors?) {
 }
 
 /** Within a couple of rows of the bottom still counts as being at the bottom. */
+/**
+ * How many photos one send can carry.
+ *
+ * Each is a document of its own against a daily write budget, and the grid
+ * only shows four before it starts counting. Ten is generous for a chat and
+ * still nowhere near a day's worth of writes.
+ */
+private const val MAX_PHOTOS_AT_ONCE = 10
+
 private const val FOLLOW_WITHIN = 2
 
 /**

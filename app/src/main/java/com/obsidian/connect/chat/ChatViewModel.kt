@@ -121,6 +121,45 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Sends several photos as one batch.
+     *
+     * Each is still its own document - a document is capped at a megabyte and
+     * a photo nearly fills one - but they share a batch id so the chat can draw
+     * them together.
+     *
+     * Sent oldest first and one at a time rather than in parallel. The order
+     * they were picked in is the order they should appear in, and firing them
+     * at once puts that at the mercy of which write finishes first.
+     */
+    fun sendPhotos(uris: List<android.net.Uri>) {
+        val id = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+        if (uris.isEmpty()) return
+
+        val album = if (uris.size > 1) java.util.UUID.randomUUID().toString() else ""
+
+        viewModelScope.launch {
+            uris.forEach { uri ->
+                val jpeg = prepare(uri) ?: return@forEach
+
+                messageRepository.sendPhoto(
+                    pairingId = id,
+                    senderId = uid,
+                    jpeg = jpeg,
+                    albumId = album,
+                ).onSuccess { messageId ->
+                    PhotoArchive.save(
+                        context = context,
+                        jpeg = jpeg,
+                        origin = PhotoArchive.Origin.Sent,
+                        id = messageId,
+                    )
+                }
+            }
+        }
+    }
+
     private val partnerId: StateFlow<String?> = pairingId
         .flatMapLatest { id -> if (id == null) flowOf(null) else pairingRepository.observe(id) }
         .map { it?.partnerOf(authRepository.currentUid.orEmpty()) }

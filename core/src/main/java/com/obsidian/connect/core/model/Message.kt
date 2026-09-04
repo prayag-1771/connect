@@ -31,6 +31,16 @@ data class Message(
     val photo: Boolean = false,
 
     /**
+     * Which batch this photo arrived in, if any.
+     *
+     * Photos picked together are separate documents - they have to be, since
+     * each carries its own bytes and a document is capped - but they were one
+     * action and read as one thing. Sharing an id is what lets the chat draw
+     * them as a single block rather than as five bubbles in a row.
+     */
+    val albumId: String = "",
+
+    /**
      * A voice note, carried the same way.
      *
      * Audio suits this far better than video does: a minute of AAC mono at
@@ -107,6 +117,9 @@ data class Message(
 
     /** A function, not a getter, so Firestore does not treat it as a field. */
     fun isStarredBy(uid: String?): Boolean = uid != null && uid in starredBy
+
+    @get:Exclude
+    val inAlbum: Boolean get() = albumId.isNotBlank()
 
     @get:Exclude
     val isReply: Boolean get() = replyToId.isNotBlank()

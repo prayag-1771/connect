@@ -148,6 +148,7 @@ class MessageRepository @Inject constructor(
         jpeg: ByteArray,
         caption: String = "",
         replyTo: Message? = null,
+        albumId: String = "",
     ): Result<String> = runCatching {
         check(jpeg.size <= MAX_IMAGE_BYTES) {
             "That photo is ${jpeg.size / 1024}KB, over the ${MAX_IMAGE_BYTES / 1024}KB limit"
@@ -161,6 +162,7 @@ class MessageRepository @Inject constructor(
                 put("image", Blob.fromBytes(jpeg))
                 // Outlives the bytes, which are erased once delivered.
                 put("photo", true)
+                if (albumId.isNotBlank()) put("albumId", albumId)
                 put("createdAtMillis", System.currentTimeMillis())
                 put("createdAt", FieldValue.serverTimestamp())
                 putReply(replyTo)
