@@ -15,8 +15,17 @@ import com.google.firebase.firestore.DocumentId
  * SDK can, but demands Premium at both ends. A player this app owns is the only
  * one it can actually keep in step.
  */
-/** One track waiting its turn. */
+/**
+ * One track waiting its turn.
+ *
+ * Carries an id of its own rather than being identified by its video. The queue
+ * is a Firestore array, and arrays are written with union and removal by exact
+ * value - so two entries for the same song were the same value, and adding the
+ * second silently did nothing. An id also gives the list stable keys, which a
+ * repeated song would otherwise break.
+ */
 data class QueueItem(
+    val id: String = "",
     val videoId: String = "",
     val title: String = "",
 )

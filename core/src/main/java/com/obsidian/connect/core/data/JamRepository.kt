@@ -119,25 +119,24 @@ class JamRepository @Inject constructor(
         item: QueueItem,
     ): Result<Unit> = runCatching {
         session(pairingId).set(
-            mapOf(
-                "queue" to FieldValue.arrayUnion(
-                    mapOf("videoId" to item.videoId, "title" to item.title),
-                ),
-            ),
+            mapOf("queue" to FieldValue.arrayUnion(item.asMap())),
             SetOptions.merge(),
         ).await()
     }
 
     suspend fun dequeue(pairingId: String, item: QueueItem): Result<Unit> = runCatching {
         session(pairingId).set(
-            mapOf(
-                "queue" to FieldValue.arrayRemove(
-                    mapOf("videoId" to item.videoId, "title" to item.title),
-                ),
-            ),
+            mapOf("queue" to FieldValue.arrayRemove(item.asMap())),
             SetOptions.merge(),
         ).await()
     }
+
+    /** Written the same way everywhere, or union and removal stop matching. */
+    private fun QueueItem.asMap(): Map<String, Any> = mapOf(
+        "id" to id,
+        "videoId" to videoId,
+        "title" to title,
+    )
 
     /**
      * Writes a new running order.
@@ -151,9 +150,7 @@ class JamRepository @Inject constructor(
     ): Result<Unit> = runCatching {
         session(pairingId).set(
             mapOf(
-                "queue" to queue.map {
-                    mapOf("videoId" to it.videoId, "title" to it.title)
-                },
+                "queue" to queue.map { it.asMap() },
             ),
             SetOptions.merge(),
         ).await()
@@ -182,9 +179,7 @@ class JamRepository @Inject constructor(
                 "playing" to true,
                 "positionMs" to 0L,
                 "byUid" to uid,
-                "queue" to remainingQueue.map {
-                    mapOf("videoId" to it.videoId, "title" to it.title)
-                },
+                "queue" to remainingQueue.map { it.asMap() },
                 "playedIds" to played.takeLast(PLAYED_MEMORY),
                 "updatedAtMillis" to System.currentTimeMillis(),
             ),

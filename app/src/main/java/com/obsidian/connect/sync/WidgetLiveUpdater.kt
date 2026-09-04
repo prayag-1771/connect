@@ -282,7 +282,7 @@ class WidgetLiveUpdater @Inject constructor(
         val next = session.queue.firstOrNull()
             ?: YouTubeSearch.similar(session.title, exclude = played)
                 .firstOrNull()
-                ?.let { QueueItem(it.videoId, it.title) }
+                ?.let { QueueItem(java.util.UUID.randomUUID().toString(), it.videoId, it.title) }
 
         if (next == null) {
             jamRepository.update(pairingId, uid, false, 0L)
@@ -319,10 +319,20 @@ class WidgetLiveUpdater @Inject constructor(
         jamRepository.advance(
             pairingId = pairingId,
             uid = uid,
-            next = QueueItem(previous, YouTubeSearch.titleFor(previous).orEmpty()),
+            next = QueueItem(
+                java.util.UUID.randomUUID().toString(),
+                previous,
+                YouTubeSearch.titleFor(previous).orEmpty(),
+            ),
             // The song being left goes back to the front, so forward again
             // returns to where you were.
-            remainingQueue = listOf(QueueItem(session.videoId, session.title)) + session.queue,
+            remainingQueue = listOf(
+                QueueItem(
+                    java.util.UUID.randomUUID().toString(),
+                    session.videoId,
+                    session.title,
+                ),
+            ) + session.queue,
             played = session.playedIds.dropLast(1),
         )
     }
@@ -466,6 +476,11 @@ class WidgetLiveUpdater @Inject constructor(
                 )
 
                 val unread = newestFromPartner > syncState.lastReadMessageAt
+
+                // The tab badge is set every time, even when the widget flag has
+                // not moved: the app can be reopened with the flag already true,
+                // and the badge would otherwise never learn about it.
+                UnreadState.set(unread)
 
                 // A redraw costs a bitmap render and a Binder round trip to the
                 // launcher, so only when the answer actually changes.

@@ -120,6 +120,7 @@ private fun JamScreen(
     val context = LocalContext.current
     val session by viewModel.session.collectAsStateWithLifecycle()
     val problem by viewModel.problem.collectAsStateWithLifecycle()
+    val status by viewModel.status.collectAsStateWithLifecycle()
 
     val chatViewModel: JamChatViewModel = hiltViewModel()
 
@@ -292,6 +293,16 @@ private fun JamScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    IconButton(
+                        onClick = viewModel::playPrevious,
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SkipPrevious,
+                            contentDescription = "Previous",
+                        )
+                    }
+
                     FilledIconButton(
                         onClick = {
                             viewModel.report(!playing, JamPlayerHolder.lastPositionMs)
@@ -305,6 +316,16 @@ private fun JamScreen(
                                 Icons.Filled.PlayArrow
                             },
                             contentDescription = if (playing) "Pause" else "Play",
+                        )
+                    }
+
+                    IconButton(
+                        onClick = viewModel::playNext,
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SkipNext,
+                            contentDescription = "Next",
                         )
                     }
                 }
@@ -360,6 +381,73 @@ private fun JamScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
+                // A working copy the drag rearranges, so a track follows the
+                // finger instead of waiting on a round trip.
+                var arranged by remember(queue) { mutableStateOf(queue) }
+                val queueState = rememberLazyListState()
+                val reorder = rememberReorderState(
+                    listState = queueState,
+                    onMove = { from, to ->
+                        arranged = arranged.toMutableList().apply {
+                            if (from in indices && to in indices) add(to, removeAt(from))
+                        }
+                    },
+                    onSettled = { viewModel.reorderQueue(arranged) },
+                )
+
+                LazyColumn(
+                    state = queueState,
+                    // Capped, so a long queue cannot push the controls off the
+                    // bottom of a scrolling screen.
+                    modifier = Modifier.heightIn(max = 220.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    items(items = arranged, key = { it.id.ifBlank { it.videoId } }) { item ->
+                        val dragging = reorder.isDragging(item.id.ifBlank { item.videoId })
+                        val translation = if (dragging) reorder.offset else 0f
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .zIndex(if (dragging) 1f else 0f)
+                                .graphicsLayer { translationY = translation }
+                                .then(if (dragging) Modifier else Modifier.animateItem()),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = item.title.ifBlank { item.videoId },
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = { viewModel.removeFromQueue(item) },
+                                modifier = Modifier.size(30.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "Remove",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                            DragHandle(
+                                onStart = { reorder.start(item.id.ifBlank { item.videoId }) },
+                                onDrag = reorder::drag,
+                                onEnd = reorder::stop,
+                            )
+                        }
+                    }
+                }
+            }
+
+            status?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
 
             problem?.let {

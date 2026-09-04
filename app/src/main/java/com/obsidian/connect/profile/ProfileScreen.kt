@@ -1,6 +1,12 @@
 package com.obsidian.connect.profile
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Column
 import com.obsidian.connect.archive.DownloadChatCard
 import com.obsidian.connect.timetable.TimetableActivity
@@ -67,6 +73,8 @@ fun ProfileScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val chatTheme by viewModel.chatTheme.collectAsStateWithLifecycle()
     val paired by viewModel.paired.collectAsStateWithLifecycle()
+    val partnerOnline by viewModel.partnerOnline.collectAsStateWithLifecycle()
+    val partnerFree by viewModel.partnerFree.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier
@@ -100,10 +108,40 @@ fun ProfileScreen(
                 Spacer(Modifier.height(12.dp))
                 HorizontalDivider()
                 Spacer(Modifier.height(12.dp))
-                InfoRow(
-                    label = "Connected to",
-                    value = partnerName.ifBlank { "Nobody yet" },
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    InfoRow(
+                        label = "Connected to",
+                        value = partnerName.ifBlank { "Nobody yet" },
+                        modifier = Modifier.weight(1f),
+                    )
+
+                    if (partnerName.isNotBlank()) {
+                        // A dot and a word. The dot alone is ambiguous on a
+                        // screen with several other coloured dots on it.
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (partnerOnline) {
+                                        ONLINE_GREEN
+                                    } else {
+                                        MaterialTheme.colorScheme.outline
+                                    },
+                                ),
+                        )
+                        Spacer(Modifier.size(6.dp))
+                        Text(
+                            text = if (partnerOnline) "Online" else "Offline",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (partnerOnline) {
+                                ONLINE_GREEN
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
+                }
             }
         }
 
@@ -118,9 +156,22 @@ fun ProfileScreen(
         OutlinedButton(
             onClick = { TimetableActivity.open(context) },
             modifier = Modifier.fillMaxWidth(),
+            colors = if (partnerFree) {
+                ButtonDefaults.outlinedButtonColors(
+                    containerColor = ONLINE_GREEN.copy(alpha = 0.14f),
+                    contentColor = ONLINE_GREEN,
+                )
+            } else {
+                ButtonDefaults.outlinedButtonColors()
+            },
         ) {
             Icon(Icons.Outlined.CalendarMonth, contentDescription = null)
             Text("  Timetable")
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = if (partnerFree) "Available" else "Not available",
+                style = MaterialTheme.typography.labelMedium,
+            )
         }
 
         AppearanceCard(
@@ -247,8 +298,8 @@ fun AppLockCard() {
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
-    Column {
+private fun InfoRow(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
@@ -257,3 +308,6 @@ private fun InfoRow(label: String, value: String) {
         Text(text = value, style = MaterialTheme.typography.bodyLarge)
     }
 }
+
+/** The one green in the app that means "yes, now". */
+private val ONLINE_GREEN = Color(0xFF3DA35D)

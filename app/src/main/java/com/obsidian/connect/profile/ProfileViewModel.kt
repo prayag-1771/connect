@@ -20,7 +20,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -41,6 +45,7 @@ class ProfileViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val pairingRepository: PairingRepository,
     private val syncState: SyncState,
+    private val timetableRepository: com.obsidian.connect.core.data.TimetableRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProfileState())
@@ -66,6 +71,61 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             val id = pairingIdFlow.first() ?: return@launch
             pairingRepository.setChatTheme(id, theme.name)
+        }
+    }
+
+    private val partnerIdFlow = pairingIdFlow
+        .flatMapLatest { id -> if (id == null) flowOf(null) else pairingRepository.observe(id) }
+        .map { it?.partnerOf(authRepository.currentUid.orEmpty()) }
+        .distinctUntilChanged()
+
+    /** Their user document, which carries both presence and their name. */
+    private val partner = partnerIdFlow
+        .flatMapLatest { id -> if (id == null) flowOf(null) else userRepository.observe(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+
+    /**
+     * Whether they have the app in front of them.
+     *
+     * Recomputed on a timer as well as on every change, because going offline
+     * is the absence of a heartbeat rather than an event - nothing arrives to
+     * announce it.
+     */
+    val partnerOnline: StateFlow<Boolean> = combine(partner, ticker()) { user, now ->
+        user?.isOnline(now) == true
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), false)
+
+    /**
+     * Whether they are free right now, according to their own timetable.
+     *
+     * Free is the default, including when there is no timetable at all: an
+     * empty slot means nothing is scheduled, and saying nothing at all left the
+     * button looking broken.
+     */
+    val partnerFree: StateFlow<Boolean> =
+        combine(pairingIdFlow, partnerIdFlow) { pairing, partner -> pairing to partner }
+            .flatMapLatest { (pairing, partner) ->
+                if (pairing == null || partner == null) {
+                    flowOf(null)
+                } else {
+                    timetableRepository.observe(pairing, partner)
+                }
+            }
+            .combine(ticker()) { timetable, _ ->
+                timetable == null || timetable.isEmpty || !timetable.isBusyNow()
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), true)
+
+    /**
+     * A slow pulse, so time passing is something the UI can react to.
+     *
+     * Going offline and becoming free are both the absence of an event: nothing
+     * arrives to announce either, so something has to look.
+     */
+    private fun ticker(): Flow<Long> = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(30_000)
         }
     }
 

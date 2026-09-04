@@ -25,6 +25,13 @@ import com.obsidian.connect.lock.AppLock
 import com.obsidian.connect.lock.LockedScreen
 import com.obsidian.connect.pairing.PairingScreen
 import com.obsidian.connect.jam.JamRequestGate
+import com.obsidian.connect.core.data.AuthRepository
+import com.obsidian.connect.core.data.UserRepository
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 import com.obsidian.connect.ui.theme.ConnectTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -43,6 +50,18 @@ class MainActivity : FragmentActivity() {
 
     /** Cleared on every stop, so returning to the app asks again. */
     private val unlocked = mutableStateOf(false)
+
+    @Inject lateinit var authRepository: AuthRepository
+    @Inject lateinit var userRepository: UserRepository
+
+    /**
+     * Beats while the app is in front, and stops when it is not.
+     *
+     * Tied to the activity rather than the process, because "online" here means
+     * somebody is looking at it - a process kept alive by a jam playing in the
+     * background is not the same as being present.
+     */
+    private var heartbeat: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,9 +87,22 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    private fun beat(online: Boolean) {
+        val uid = authRepository.currentUid ?: return
+        lifecycleScope.launch { userRepository.markOnline(uid, online) }
+    }
+
     override fun onStart() {
         super.onStart()
         if (AppLock.isEnabled(this) && !unlocked.value) askToUnlock()
+
+        heartbeat?.cancel()
+        heartbeat = lifecycleScope.launch {
+            while (true) {
+                beat(online = true)
+                delay(HEARTBEAT_MS)
+            }
+        }
     }
 
     /**
@@ -82,6 +114,12 @@ class MainActivity : FragmentActivity() {
     override fun onStop() {
         super.onStop()
         unlocked.value = false
+
+        heartbeat?.cancel()
+        heartbeat = null
+        // Written rather than left to lapse, so closing the app looks like
+        // closing the app rather than like a slow network.
+        beat(online = false)
     }
 
     private fun askToUnlock() {
@@ -118,6 +156,9 @@ class MainActivity : FragmentActivity() {
     }
 
     companion object {
+        /** Comfortably inside the window the other end trusts it for. */
+        private const val HEARTBEAT_MS = 45_000L
+
         const val EXTRA_TAB = "open_tab"
         const val EXTRA_JAM_REQUEST = "jam_request"
     }

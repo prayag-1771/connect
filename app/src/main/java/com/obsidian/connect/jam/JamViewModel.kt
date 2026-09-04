@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -42,8 +43,28 @@ class JamViewModel @Inject constructor(
         .flatMapLatest { id -> if (id == null) flowOf(null) else jamRepository.observe(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
 
+    /**
+     * The pairing, waited for rather than sampled.
+     *
+     * It arrives from a Firestore read a moment after the screen opens. Reading
+     * the current value and returning when it was still null meant anything
+     * tapped in that window did nothing at all, silently - which is what made
+     * the queue look broken.
+     */
+    private suspend fun pairing(): String = pairingId.filterNotNull().first()
+
     private val _problem = MutableStateFlow<String?>(null)
     val problem: StateFlow<String?> = _problem.asStateFlow()
+
+    /**
+     * Something that went right.
+     *
+     * Kept apart from [problem] because they are shown differently - saying
+     * "Queued X" in the red reserved for failures made every successful add
+     * look like an error.
+     */
+    private val _status = MutableStateFlow<String?>(null)
+    val status: StateFlow<String?> = _status.asStateFlow()
 
     /**
      * Puts a track on for both of you.
@@ -154,7 +175,6 @@ class JamViewModel @Inject constructor(
      * of failing silently in twenty minutes.
      */
     fun enqueue(linkOrId: String) {
-        val pairing = pairingId.value ?: return
         val typed = linkOrId.trim()
         if (typed.isEmpty()) return
 
@@ -166,14 +186,16 @@ class JamViewModel @Inject constructor(
                 _problem.value = "Could not find \"$typed\"."
                 return@launch
             }
-            jamRepository.enqueue(pairing, item)
+
+            jamRepository.enqueue(pairing(), item)
+                .onSuccess { _status.value = "Queued ${item.title.ifBlank { typed }}" }
+                .onFailure { _problem.value = it.message ?: "Could not queue that." }
         }
     }
 
     /** Writes a hand-arranged running order. */
     fun reorderQueue(queue: List<QueueItem>) {
-        val pairing = pairingId.value ?: return
-        viewModelScope.launch { jamRepository.reorderQueue(pairing, queue) }
+        viewModelScope.launch { jamRepository.reorderQueue(pairing(), queue) }
     }
 
     /**
@@ -204,18 +226,23 @@ class JamViewModel @Inject constructor(
             jamRepository.advance(
                 pairingId = pairing,
                 uid = uid,
-                next = QueueItem(previous, title),
+                next = QueueItem(java.util.UUID.randomUUID().toString(), previous, title),
                 // The song being left goes back to the front, so skipping back
                 // and forward again returns to where you were.
-                remainingQueue = listOf(QueueItem(current.videoId, current.title)) + current.queue,
+                remainingQueue = listOf(
+                    QueueItem(
+                        java.util.UUID.randomUUID().toString(),
+                        current.videoId,
+                        current.title,
+                    ),
+                ) + current.queue,
                 played = current.playedIds.dropLast(1),
             )
         }
     }
 
     fun removeFromQueue(item: QueueItem) {
-        val pairing = pairingId.value ?: return
-        viewModelScope.launch { jamRepository.dequeue(pairing, item) }
+        viewModelScope.launch { jamRepository.dequeue(pairing(), item) }
     }
 
     /**
@@ -260,15 +287,19 @@ class JamViewModel @Inject constructor(
     ): QueueItem? {
         if (!YouTubeSearch.isConfigured || after.isBlank()) return null
         val hits = YouTubeSearch.similar(after, exclude = played)
-        return hits.firstOrNull()?.let { QueueItem(it.videoId, it.title) }
+        return hits.firstOrNull()?.let {
+            QueueItem(java.util.UUID.randomUUID().toString(), it.videoId, it.title)
+        }
     }
 
     private suspend fun resolve(typed: String): QueueItem? {
+        val fresh = java.util.UUID.randomUUID().toString()
+
         extractVideoId(typed)?.let { id ->
-            return QueueItem(id, YouTubeSearch.titleFor(id) ?: typed)
+            return QueueItem(fresh, id, YouTubeSearch.titleFor(id) ?: typed)
         }
         val hit = YouTubeSearch.best(typed) ?: return null
-        return QueueItem(hit.videoId, hit.title)
+        return QueueItem(fresh, hit.videoId, hit.title)
     }
 
     fun end() {

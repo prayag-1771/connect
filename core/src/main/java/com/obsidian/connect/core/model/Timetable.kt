@@ -44,10 +44,41 @@ data class Timetable(
 ) {
     val isEmpty: Boolean get() = entries.isEmpty()
 
+    /**
+     * Whether something is happening right now.
+     *
+     * An entry with no end time counts as busy for an hour, which is the
+     * commonest length and better than treating it as instantaneous - a lecture
+     * whose end nobody wrote down is not over the moment it starts.
+     */
+    fun isBusyNow(now: java.util.Calendar = java.util.Calendar.getInstance()): Boolean {
+        val day = DAYS.getOrNull((now.get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7)
+            ?: return false
+        val minute = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 +
+            now.get(java.util.Calendar.MINUTE)
+
+        return entriesOn(day).any { entry ->
+            val from = entry.start.toMinutes() ?: return@any false
+            val until = entry.end.toMinutes() ?: (from + DEFAULT_LENGTH)
+            minute in from until until
+        }
+    }
+
     fun entriesOn(day: String): List<TimetableEntry> =
         entries.filter { it.day.equals(day, ignoreCase = true) }.sortedBy { it.start }
 
     companion object {
+        /** A slot with no stated end is treated as an hour. */
+        private const val DEFAULT_LENGTH = 60
+
+        private fun String.toMinutes(): Int? {
+            val parts = split(":")
+            if (parts.size < 2) return null
+            val h = parts[0].trim().toIntOrNull() ?: return null
+            val m = parts[1].trim().toIntOrNull() ?: return null
+            return h * 60 + m
+        }
+
         /** Monday first, because that is how a week is read. */
         val DAYS = listOf(
             "Monday", "Tuesday", "Wednesday",

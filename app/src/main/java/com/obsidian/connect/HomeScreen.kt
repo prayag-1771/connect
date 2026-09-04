@@ -10,6 +10,9 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import com.obsidian.connect.sync.UnreadState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -83,7 +86,19 @@ fun HomeScreen(
                     NavigationBarItem(
                         selected = index == selected,
                         onClick = { selected = index },
-                        icon = { Icon(tab.icon, contentDescription = null) },
+                        icon = {
+                            // A dot on the tab, for a message that arrived while
+                            // somebody was on a different one. The widget already
+                            // says this to the home screen; inside the app the tab
+                            // bar is where the same news belongs.
+                            if (tab == HomeTab.Chat && UnreadState.hasUnread && index != selected) {
+                                BadgedBox(badge = { Badge() }) {
+                                    Icon(tab.icon, contentDescription = null)
+                                }
+                            } else {
+                                Icon(tab.icon, contentDescription = null)
+                            }
+                        },
                         label = { Text(tab.label) },
                     )
                 }

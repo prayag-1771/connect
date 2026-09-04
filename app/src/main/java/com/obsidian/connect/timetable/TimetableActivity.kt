@@ -113,8 +113,11 @@ private fun TimetableScreen(
     var editing by remember { mutableStateOf<TimetableEntry?>(null) }
 
     val picker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri -> uri?.let(viewModel::readFrom) }
+        // Several at once, because a timetable is often photographed in halves
+        // and reading them one upload at a time would mean each replacing the
+        // last rather than completing it.
+        ActivityResultContracts.PickMultipleVisualMedia(MAX_IMAGES),
+    ) { uris -> viewModel.readFrom(uris) }
 
     Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         Row(
@@ -248,7 +251,7 @@ private fun TimetableScreen(
                         if (mine?.isEmpty == false) {
                             "Replace my timetable"
                         } else {
-                            "Read mine from a photo"
+                            "Read mine from photos"
                         },
                     )
                 }
@@ -339,3 +342,6 @@ private fun todayName(): String {
     val index = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
     return Timetable.DAYS.getOrElse((index + 5) % 7) { Timetable.DAYS.first() }
 }
+
+/** More than a week fits in; past this it is a mistake rather than a timetable. */
+private const val MAX_IMAGES = 10

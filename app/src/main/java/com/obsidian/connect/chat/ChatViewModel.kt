@@ -19,6 +19,7 @@ import com.obsidian.connect.core.model.Message
 import com.obsidian.connect.core.model.Receipt
 import com.obsidian.connect.jam.JamPlayerHolder
 import com.obsidian.connect.sync.SyncState
+import com.obsidian.connect.sync.UnreadState
 import com.obsidian.connect.ui.theme.ChatTheme
 import com.obsidian.connect.widget.MomentWidgetUpdater
 import com.obsidian.connect.widget.WidgetCaptionStore
@@ -461,6 +462,7 @@ class ChatViewModel @Inject constructor(
         if (newest <= syncState.lastReadMessageAt) return
 
         syncState.lastReadMessageAt = newest
+        UnreadState.set(false)
         viewModelScope.launch {
             WidgetCaptionStore.writeUnread(context, false)
             MomentWidgetUpdater.refresh(context)

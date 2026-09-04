@@ -100,42 +100,66 @@ class TimetableViewModel @Inject constructor(
      * term has changed, keeping last term's entries alongside would leave two
      * weeks stacked on top of each other with no way to tell them apart.
      */
-    fun readFrom(uri: Uri) {
+    fun readFrom(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+
         val id = pairingId.value ?: return
         val uid = authRepository.currentUid ?: return
 
         viewModelScope.launch {
             _busy.value = true
-            _status.value = "Reading the image..."
 
-            val jpeg = withContext(Dispatchers.IO) {
-                runCatching {
-                    context.contentResolver.openInputStream(uri).use { it?.readBytes() }
-                        ?.let {
-                            ImageCompressor.compress(
-                                source = it,
-                                longEdge = ImageCompressor.DETAIL_LONG_EDGE,
-                            )
-                        }
-                }.getOrNull()
-            }
+            // Read one at a time and gathered, because a timetable is often
+            // photographed in halves - a morning page and an afternoon one -
+            // and reading them separately would mean the second replacing the
+            // first rather than completing it.
+            val gathered = mutableListOf<TimetableEntry>()
+            var failed = 0
 
-            if (jpeg == null) {
-                _status.value = "That image could not be opened."
-                _busy.value = false
-                return@launch
-            }
-
-            TimetableReader.read(jpeg)
-                .onSuccess { entries ->
-                    if (entries.isEmpty()) {
-                        _status.value = "Nothing that looked like a timetable was in that image."
-                    } else {
-                        timetableRepository.save(id, uid, entries)
-                        _status.value = "Read ${entries.size} slots."
-                    }
+            uris.forEachIndexed { index, uri ->
+                _status.value = if (uris.size == 1) {
+                    "Reading the image..."
+                } else {
+                    "Reading image ${index + 1} of ${uris.size}..."
                 }
-                .onFailure { _status.value = it.message ?: "That did not work." }
+
+                val jpeg = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openInputStream(uri).use { it?.readBytes() }
+                            ?.let {
+                                ImageCompressor.compress(
+                                    source = it,
+                                    longEdge = ImageCompressor.DETAIL_LONG_EDGE,
+                                )
+                            }
+                    }.getOrNull()
+                }
+
+                if (jpeg == null) {
+                    failed++
+                    return@forEachIndexed
+                }
+
+                TimetableReader.read(jpeg)
+                    .onSuccess { gathered += it }
+                    .onFailure { failed++ }
+            }
+
+            // Duplicates are expected when two photos overlap, and a timetable
+            // with the same lecture twice reads as a mistake.
+            val entries = gathered.distinctBy {
+                listOf(it.day, it.start, it.title.lowercase())
+            }
+
+            _status.value = when {
+                entries.isEmpty() && failed > 0 -> "Could not read those images."
+                entries.isEmpty() -> "Nothing that looked like a timetable was in there."
+                else -> {
+                    timetableRepository.save(id, uid, entries)
+                    val note = if (failed > 0) " ($failed image(s) could not be read)" else ""
+                    "Read ${entries.size} slots from ${uris.size} image(s)$note."
+                }
+            }
 
             _busy.value = false
         }

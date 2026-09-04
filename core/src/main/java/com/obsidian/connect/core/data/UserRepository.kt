@@ -36,6 +36,20 @@ class UserRepository @Inject constructor(
      * as well as from onNewToken, because a stale token means the partner's
      * photos silently stop arriving with no error anywhere.
      */
+    /**
+     * Says this person is here, or has gone.
+     *
+     * Leaving writes a zero rather than simply stopping, so the other side sees
+     * it immediately instead of waiting for the window to lapse - closing the
+     * app should look like closing the app.
+     */
+    suspend fun markOnline(uid: String, online: Boolean): Result<Unit> = runCatching {
+        users.document(uid).set(
+            mapOf("onlineAtMillis" to if (online) System.currentTimeMillis() else 0L),
+            SetOptions.merge(),
+        ).await()
+    }
+
     suspend fun updateFcmToken(uid: String, token: String) {
         users.document(uid)
             .set(mapOf("fcmToken" to token), SetOptions.merge())
