@@ -170,6 +170,29 @@ class JamViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Moves one track up or down the queue.
+     *
+     * Buttons rather than a drag. The queue lives in a scrolling column of
+     * mixed content rather than a list, so there is no layout to measure a drag
+     * against - and for a handful of songs, two taps that always land beat a
+     * gesture that sometimes does.
+     */
+    fun moveInQueue(item: QueueItem, up: Boolean) {
+        val pairing = pairingId.value ?: return
+        val queue = session.value?.queue.orEmpty()
+
+        val index = queue.indexOf(item)
+        val target = if (up) index - 1 else index + 1
+        if (index < 0 || target !in queue.indices) return
+
+        val reordered = queue.toMutableList().apply {
+            set(index, set(target, item))
+        }
+
+        viewModelScope.launch { jamRepository.reorderQueue(pairing, reordered) }
+    }
+
     fun removeFromQueue(item: QueueItem) {
         val pairing = pairingId.value ?: return
         viewModelScope.launch { jamRepository.dequeue(pairing, item) }

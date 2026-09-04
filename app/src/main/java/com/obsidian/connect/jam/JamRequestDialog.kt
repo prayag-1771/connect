@@ -40,7 +40,10 @@ fun JamRequestDialog() {
     }
 
     AlertDialog(
-        onDismissRequest = { JamRequestGate.decline(current.requestedAtMillis) },
+        onDismissRequest = {
+            viewModel.decline()
+            JamRequestGate.decline(current.requestedAtMillis)
+        },
         title = { Text("Join the jam chat?") },
         text = {
             Text(
@@ -59,7 +62,12 @@ fun JamRequestDialog() {
         },
         dismissButton = {
             TextButton(
-                onClick = { JamRequestGate.decline(current.requestedAtMillis) },
+                onClick = {
+                    // Written down, so their Request button can tell a no from
+                    // silence and offer to ask again.
+                    viewModel.decline()
+                    JamRequestGate.decline(current.requestedAtMillis)
+                },
             ) { Text("Not now") }
         },
     )

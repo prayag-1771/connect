@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -59,6 +61,7 @@ fun JamChatSheet(
     onEnd: () -> Unit,
     onHide: () -> Unit,
     onRequest: () -> Unit,
+    requestState: RequestState,
 ) {
     var draft by remember { mutableStateOf("") }
 
@@ -86,7 +89,29 @@ fun JamChatSheet(
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onRequest) { Text("Request") }
+                // Disabled while an ask is outstanding, and once they are in.
+                // Only a no puts it back - which is the one case where asking
+                // again is a reasonable thing to do.
+                TextButton(
+                    onClick = onRequest,
+                    enabled = requestState == RequestState.Askable,
+                    colors = if (requestState == RequestState.Joined) {
+                        ButtonDefaults.textButtonColors(
+                            disabledContentColor = JOINED_GREEN,
+                            disabledContainerColor = JOINED_GREEN.copy(alpha = 0.16f),
+                        )
+                    } else {
+                        ButtonDefaults.textButtonColors()
+                    },
+                ) {
+                    Text(
+                        when (requestState) {
+                            RequestState.Joined -> "Joined"
+                            RequestState.Waiting -> "Asked"
+                            RequestState.Askable -> "Request"
+                        },
+                    )
+                }
                 TextButton(onClick = onEnd) { Text("End") }
             }
 
@@ -227,3 +252,18 @@ fun JamChatInvite(onJoin: () -> Unit, onDecline: () -> Unit) {
         dismissButton = { TextButton(onClick = onDecline) { Text("No thanks") } },
     )
 }
+
+/** Where the last invitation got to. */
+enum class RequestState {
+    /** Nobody has been asked, or the last ask was turned down. */
+    Askable,
+
+    /** Asked, and not yet answered either way. */
+    Waiting,
+
+    /** They came in. */
+    Joined,
+}
+
+/** Muted enough to read as a state rather than as a button wanting a press. */
+private val JOINED_GREEN = Color(0xFF3DA35D)

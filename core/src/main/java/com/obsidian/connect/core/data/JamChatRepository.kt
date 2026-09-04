@@ -70,6 +70,20 @@ class JamChatRepository @Inject constructor(
         ).await()
     }
 
+    /**
+     * Records a no.
+     *
+     * The room is left exactly as it was - the other person is still sitting in
+     * it, and turning down an invitation is not a reason to close it on them.
+     * This only tells them the question was answered.
+     */
+    suspend fun decline(pairingId: String): Result<Unit> = runCatching {
+        room(pairingId).set(
+            mapOf("declinedAtMillis" to System.currentTimeMillis()),
+            SetOptions.merge(),
+        ).await()
+    }
+
     suspend fun join(pairingId: String, uid: String): Result<Unit> = runCatching {
         room(pairingId).set(
             mapOf("participants" to FieldValue.arrayUnion(uid)),

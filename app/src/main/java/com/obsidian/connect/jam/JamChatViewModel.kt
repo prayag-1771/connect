@@ -90,6 +90,11 @@ class JamChatViewModel @Inject constructor(
         }
     }
 
+    /** Says no, without closing the room they are sitting in. */
+    fun decline() {
+        viewModelScope.launch { chatRepository.decline(pairing()) }
+    }
+
     fun join() {
         val uid = authRepository.currentUid ?: return
         viewModelScope.launch {

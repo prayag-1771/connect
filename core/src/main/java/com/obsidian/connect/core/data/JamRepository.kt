@@ -140,6 +140,26 @@ class JamRepository @Inject constructor(
     }
 
     /**
+     * Writes a new running order.
+     *
+     * The whole list at once rather than a swap, because the queue is one field
+     * on one document - there is no smaller thing to move.
+     */
+    suspend fun reorderQueue(
+        pairingId: String,
+        queue: List<QueueItem>,
+    ): Result<Unit> = runCatching {
+        session(pairingId).set(
+            mapOf(
+                "queue" to queue.map {
+                    mapOf("videoId" to it.videoId, "title" to it.title)
+                },
+            ),
+            SetOptions.merge(),
+        ).await()
+    }
+
+    /**
      * Moves to the next track, whatever it is.
      *
      * The whole session is written at once rather than the queue being popped

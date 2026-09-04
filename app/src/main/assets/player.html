@@ -43,7 +43,13 @@
             onStateChange: function (e) {
               if (e.data === YT.PlayerState.PLAYING) Android.state(true);
               if (e.data === YT.PlayerState.PAUSED) Android.state(false);
-              if (e.data === YT.PlayerState.ENDED) Android.state(false);
+              if (e.data === YT.PlayerState.ENDED) {
+                Android.state(false);
+                // The only signal that a track ran out. Without it nothing
+                // advances the queue and a finished song simply stops.
+                Android.finished();
+              }
+              Android.phase(e.data);
             }
           }
         });

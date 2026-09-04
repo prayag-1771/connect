@@ -31,12 +31,29 @@ data class JamChatRoom(
      * newer one is a new question rather than the same one reappearing.
      */
     val requestedAtMillis: Long = 0L,
+
+    /**
+     * When the other person last said no.
+     *
+     * Recorded on the room rather than kept on their phone, because the person
+     * who asked is the one who needs to know - without it their Request button
+     * has no way to tell "waiting for an answer" from "answered, and the answer
+     * was no".
+     */
+    val declinedAtMillis: Long = 0L,
 ) {
     val isLive: Boolean get() = startedBy.isNotBlank()
 
     fun hasJoined(uid: String): Boolean = uid in participants
 
     fun isWaitingFor(uid: String): Boolean = isLive && !hasJoined(uid)
+
+    /** Both people are in it. */
+    val isAnswered: Boolean get() = participants.size >= 2
+
+    /** Asked, and neither joined nor turned down since. */
+    val isPending: Boolean
+        get() = isLive && !isAnswered && requestedAtMillis > declinedAtMillis
 }
 
 /**

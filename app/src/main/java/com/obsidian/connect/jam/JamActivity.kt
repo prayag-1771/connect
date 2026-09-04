@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.Pause
@@ -360,7 +362,34 @@ private fun JamScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
-                        IconButton(onClick = { viewModel.removeFromQueue(item) }) {
+                        IconButton(
+                            onClick = { viewModel.moveInQueue(item, up = true) },
+                            enabled = index > 0,
+                            modifier = Modifier.size(30.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.KeyboardArrowUp,
+                                contentDescription = "Move up",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewModel.moveInQueue(item, up = false) },
+                            enabled = index < queue.lastIndex,
+                            modifier = Modifier.size(30.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.KeyboardArrowDown,
+                                contentDescription = "Move down",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewModel.removeFromQueue(item) },
+                            modifier = Modifier.size(30.dp),
+                        ) {
                             Icon(
                                 imageVector = Icons.Filled.Close,
                                 contentDescription = "Remove",
@@ -450,6 +479,11 @@ private fun JamChatLayer(
         onEnd = onEnd,
         onHide = onHide,
         onRequest = onRequest,
+        requestState = when {
+            current.isAnswered -> RequestState.Joined
+            current.isPending -> RequestState.Waiting
+            else -> RequestState.Askable
+        },
     )
 }
 
