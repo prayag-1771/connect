@@ -55,47 +55,82 @@ object YouTubeSearch {
     }
 
     /**
-     * The single best match, or null.
+     * The best match that will actually play, or null.
      *
-     * One result rather than a list on purpose: this is used by the jam chat,
-     * where typing a song name should put a song on rather than open a picker.
-     * Being wrong occasionally is a better trade than making someone choose
-     * every time.
+     * Several results are asked for rather than one, because the top hit is
+     * often an official upload with embedding disabled - and a search that
+     * returns a video the player then refuses is worse than no search at all.
+     * A second request asks which of them are embeddable, and the first that is
+     * gets used.
+     *
+     * That second call costs one unit against a daily ten thousand, where the
+     * search itself costs a hundred. It is not worth optimising away.
      */
     suspend fun best(query: String): Hit? = withContext(Dispatchers.IO) {
         if (!isConfigured || query.isBlank()) return@withContext null
 
         runCatching {
             val encoded = URLEncoder.encode(query, "UTF-8")
-            val url = "https://www.googleapis.com/youtube/v3/search" +
-                "?part=snippet&type=video&videoCategoryId=10&maxResults=1" +
-                "&q=$encoded&key=${BuildConfig.YOUTUBE_KEY}"
+            val search = get(
+                "https://www.googleapis.com/youtube/v3/search" +
+                    "?part=snippet&type=video&videoCategoryId=10&maxResults=$CANDIDATES" +
+                    "&q=$encoded&key=${BuildConfig.YOUTUBE_KEY}",
+            ) ?: return@runCatching null
 
-            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 12_000
-                readTimeout = 12_000
+            val items = JSONObject(search).optJSONArray("items") ?: return@runCatching null
+            val found = (0 until items.length()).mapNotNull { index ->
+                val item = items.optJSONObject(index) ?: return@mapNotNull null
+                val id = item.optJSONObject("id")?.optString("videoId").orEmpty()
+                if (id.isBlank()) return@mapNotNull null
+                Hit(
+                    videoId = id,
+                    title = item.optJSONObject("snippet")?.optString("title").orEmpty(),
+                )
             }
+            if (found.isEmpty()) return@runCatching null
 
-            val text = try {
-                if (connection.responseCode !in 200..299) return@runCatching null
-                connection.inputStream.bufferedReader().use { it.readText() }
-            } finally {
-                connection.disconnect()
-            }
-
-            val item = JSONObject(text)
-                .optJSONArray("items")
-                ?.optJSONObject(0)
-                ?: return@runCatching null
-
-            val id = item.optJSONObject("id")?.optString("videoId").orEmpty()
-            if (id.isBlank()) return@runCatching null
-
-            Hit(
-                videoId = id,
-                title = item.optJSONObject("snippet")?.optString("title").orEmpty(),
-            )
+            val playable = embeddable(found.map { it.videoId })
+            found.firstOrNull { it.videoId in playable } ?: found.first()
         }.getOrNull()
     }
+
+    /**
+     * Which of these will play inside another app.
+     *
+     * One request for all of them. Asking per video would turn a cheap check
+     * into a slow one for no better answer.
+     */
+    private fun embeddable(ids: List<String>): Set<String> {
+        val response = get(
+            "https://www.googleapis.com/youtube/v3/videos" +
+                "?part=status&id=${ids.joinToString(",")}&key=${BuildConfig.YOUTUBE_KEY}",
+        ) ?: return ids.toSet()
+
+        val items = JSONObject(response).optJSONArray("items") ?: return ids.toSet()
+        return (0 until items.length()).mapNotNull { index ->
+            val item = items.optJSONObject(index) ?: return@mapNotNull null
+            val ok = item.optJSONObject("status")?.optBoolean("embeddable") ?: true
+            item.optString("id").takeIf { ok && it.isNotBlank() }
+        }.toSet()
+    }
+
+    private fun get(url: String): String? {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 12_000
+            readTimeout = 12_000
+        }
+        return try {
+            if (connection.responseCode !in 200..299) null
+            else connection.inputStream.bufferedReader().use { it.readText() }
+        } catch (e: Exception) {
+            null
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /** Enough that a blocked official upload is not the end of the search. */
+    private const val CANDIDATES = 5
+
 }
