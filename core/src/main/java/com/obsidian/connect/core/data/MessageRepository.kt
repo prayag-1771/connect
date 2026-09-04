@@ -29,11 +29,49 @@ class MessageRepository @Inject constructor(
      * Ordered by the client timestamp rather than the server one so a message
      * you just sent appears immediately instead of after the round trip.
      */
-    fun observe(pairingId: String, limit: Long = PAGE_SIZE): Flow<List<Message>> =
+    /**
+     * The conversation as it is shown: recent only.
+     *
+     * A chat that keeps everything forever becomes something you scroll rather
+     * than read, and on this plan it is also a document count that only grows.
+     * Older messages are not lost - they are written to a file on the phone and
+     * can be downloaded whole - but they stop being in the way.
+     *
+     * The inequality is on the same field as the ordering, which Firestore
+     * requires; ordering by anything else here would need a composite index.
+     */
+    fun observe(
+        pairingId: String,
+        sinceMillis: Long = System.currentTimeMillis() - VISIBLE_WINDOW_MS,
+        limit: Long = PAGE_SIZE,
+    ): Flow<List<Message>> =
         messages(pairingId)
+            .whereGreaterThanOrEqualTo("createdAtMillis", sinceMillis)
             .orderBy("createdAtMillis", Query.Direction.ASCENDING)
             .limitToLast(limit)
             .asFlow()
+
+    /**
+     * Messages in a window, oldest first, for writing to the archive.
+     *
+     * Bounded at both ends so a nightly run collects exactly what has aged out
+     * since the last one, rather than re-reading the whole history every time
+     * and paying for it in document reads.
+     */
+    suspend fun between(
+        pairingId: String,
+        fromMillis: Long,
+        toMillis: Long,
+        limit: Long = ARCHIVE_BATCH,
+    ): List<Message> =
+        messages(pairingId)
+            .whereGreaterThan("createdAtMillis", fromMillis)
+            .whereLessThan("createdAtMillis", toMillis)
+            .orderBy("createdAtMillis", Query.Direction.ASCENDING)
+            .limit(limit)
+            .get()
+            .await()
+            .toObjects(Message::class.java)
 
     /**
      * A live view of just the newest few messages.
@@ -349,8 +387,19 @@ class MessageRepository @Inject constructor(
             .toObjects(Message::class.java)
             .count { it.senderId != uid }
 
-    private companion object {
+    companion object {
         const val PAGE_SIZE = 200L
+
+        /**
+         * How much of the conversation stays on screen.
+         *
+         * Four days: long enough that a normal back-and-forth is all there,
+         * short enough that scrolling up has an end.
+         */
+        const val VISIBLE_WINDOW_MS = 4L * 24 * 60 * 60 * 1000
+
+        /** One night's worth of aged-out messages, generously. */
+        const val ARCHIVE_BATCH = 500L
         const val MAX_LENGTH = 2000
 
         /** A quote is a reminder of what was said, not a second copy of it. */

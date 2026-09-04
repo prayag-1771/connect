@@ -21,6 +21,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         SyncScheduler.schedulePeriodic(context)
+        SyncScheduler.scheduleArchive(context)
         SyncScheduler.now(context)
         // Alarms do not survive a reboot.
         ScheduleBoundaryReceiver.schedule(context)

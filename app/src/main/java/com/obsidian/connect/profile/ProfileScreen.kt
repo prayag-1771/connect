@@ -2,6 +2,7 @@ package com.obsidian.connect.profile
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import com.obsidian.connect.archive.DownloadChatCard
 import com.obsidian.connect.timetable.TimetableActivity
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.IconButton
@@ -121,6 +122,8 @@ fun ProfileScreen(
             Icon(Icons.Outlined.CalendarMonth, contentDescription = null)
             Text("  Timetable")
         }
+
+        DownloadChatCard()
 
         AppearanceCard(
             chatTheme = chatTheme,

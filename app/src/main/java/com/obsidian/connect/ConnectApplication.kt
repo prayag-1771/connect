@@ -80,6 +80,10 @@ class ConnectApplication : Application(), Configuration.Provider, ImageLoaderFac
         SyncScheduler.schedulePeriodic(this)
         SyncScheduler.now(this)
 
+        // Moves each day's messages into the archive once they are four days
+        // old, so the download is always ready rather than built on request.
+        SyncScheduler.scheduleArchive(this)
+
         // Flips the watch face over when the active window opens or closes.
         ScheduleBoundaryReceiver.schedule(this)
 

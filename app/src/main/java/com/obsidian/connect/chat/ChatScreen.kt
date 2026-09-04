@@ -110,6 +110,9 @@ import com.obsidian.connect.jam.JamActivity
 import com.obsidian.connect.jam.JamChooser
 import com.obsidian.connect.jam.SpotifySetupActivity
 import com.obsidian.connect.jam.SpotifyStore
+import com.obsidian.connect.archive.ArchiveHint
+import com.obsidian.connect.archive.ChatArchive
+import com.obsidian.connect.archive.ChatExport
 import com.obsidian.connect.archive.PhotoArchive
 import com.obsidian.connect.ui.theme.ThemeMode
 import com.obsidian.connect.ui.theme.ChatColors
@@ -217,6 +220,10 @@ fun ChatScreen(
 
     // Held between choosing to delete and confirming it.
     var confirmingDelete by remember { mutableStateOf<Message?>(null) }
+
+    // Asked before anything is written, the same as everywhere else.
+    var downloadPrompt by remember { mutableStateOf(false) }
+    var downloadResult by remember { mutableStateOf<String?>(null) }
 
     // Which service to jam on, asked before anything is opened.
     var jamChooser by remember { mutableStateOf(false) }
@@ -461,6 +468,15 @@ fun ChatScreen(
                     )
                     }
                 }
+
+                // Reversed, so the last item is the top of the conversation -
+                // exactly where somebody runs out of chat and thinks to ask
+                // where the rest of it went.
+                if (ChatArchive.exists(context)) {
+                    item(key = "archive-hint") {
+                        ArchiveHint(onDownload = { downloadPrompt = true })
+                    }
+                }
             }
         }
 
@@ -689,6 +705,40 @@ fun ChatScreen(
             },
             onDismiss = { jamChooser = false },
         )
+    }
+
+    if (downloadPrompt) {
+        AlertDialog(
+            onDismissRequest = { downloadPrompt = false },
+            title = { Text("Download the older chat?") },
+            text = {
+                Text(
+                    "A text file goes into your Downloads folder, with dates, " +
+                        "times and who said what.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        downloadPrompt = false
+                        downloadResult = ChatExport.save(context).fold(
+                            onSuccess = { "Saved to Downloads as $it" },
+                            onFailure = { it.message ?: "That did not work." },
+                        )
+                    },
+                ) { Text("Download") }
+            },
+            dismissButton = {
+                TextButton(onClick = { downloadPrompt = false }) { Text("Not now") }
+            },
+        )
+    }
+
+    downloadResult?.let { message ->
+        LaunchedEffect(message) {
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            downloadResult = null
+        }
     }
 
     confirmingDelete?.let { message ->
