@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlin.math.abs
 import javax.inject.Singleton
 
 /**
@@ -226,11 +227,10 @@ class WidgetLiveUpdater @Inject constructor(
 
                     // Started before the player, so the platform already knows
                     // this process is making sound by the time it does.
-                    if (session.playing) {
-                        JamService.start(context, session.title)
-                    } else {
-                        JamService.stop(context)
-                    }
+                    // Kept running while paused rather than stopped, so the
+                    // lock screen controls stay there to press play with. It
+                    // goes only when the jam does.
+                    JamService.start(context, session.title, session.playing)
 
                     if (session.videoId != JamPlayerHolder.loadedVideoId) {
                         JamPlayerHolder.load(
@@ -239,10 +239,24 @@ class WidgetLiveUpdater @Inject constructor(
                             startMs = session.expectedPositionMs(),
                             play = session.playing,
                         )
-                    } else if (session.playing) {
-                        JamPlayerHolder.play(context)
                     } else {
-                        JamPlayerHolder.pause(context)
+                        // Correcting drift, and carrying a seek across.
+                        //
+                        // This was lost when the player moved out of the jam
+                        // screen: only play and pause were being applied, so
+                        // dragging the bar moved one phone and not the other,
+                        // and the two slid apart over a long track with nothing
+                        // to pull them back.
+                        val target = session.expectedPositionMs()
+                        if (abs(target - JamPlayerHolder.lastPositionMs) > DRIFT_TOLERANCE_MS) {
+                            JamPlayerHolder.seekTo(context, target)
+                        }
+
+                        if (session.playing) {
+                            JamPlayerHolder.play(context)
+                        } else {
+                            JamPlayerHolder.pause(context)
+                        }
                     }
                 }
             }
@@ -455,3 +469,11 @@ class WidgetLiveUpdater @Inject constructor(
             }
     }
 }
+
+/**
+ * How far the two phones may drift before it is worth correcting.
+ *
+ * Below this nobody can hear the difference, and seeking to fix it stutters
+ * the audio worse than the drift did.
+ */
+private const val DRIFT_TOLERANCE_MS = 1_500L

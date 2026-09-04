@@ -32,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -149,6 +150,16 @@ private fun JamScreen(
         onDispose { }
     }
 
+    // Only while this screen is up. The bar is the only thing that needs a
+    // position every second, and asking the player constantly when nobody is
+    // watching would be work for nothing.
+    LaunchedEffect(Unit) {
+        while (true) {
+            JamPlayerHolder.requestPosition(context)
+            delay(1_000)
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -224,6 +235,46 @@ private fun JamScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+
+                val duration = JamPlayerHolder.durationMs
+                val position = JamPlayerHolder.positionMs
+
+                if (duration > 0) {
+                    // Dragged locally, written once on release. Writing every
+                    // frame of a drag would be a Firestore write per pixel and
+                    // would fight the other phone the whole way across.
+                    var scrubbing by remember { mutableStateOf<Float?>(null) }
+
+                    Slider(
+                        value = scrubbing ?: position.toFloat().coerceIn(0f, duration.toFloat()),
+                        onValueChange = { scrubbing = it },
+                        onValueChangeFinished = {
+                            scrubbing?.let { target ->
+                                viewModel.report(playing, target.toLong())
+                                JamPlayerHolder.seekTo(context, target.toLong())
+                            }
+                            scrubbing = null
+                        },
+                        valueRange = 0f..duration.toFloat(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = clock((scrubbing?.toLong() ?: position)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = clock(duration),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -409,3 +460,9 @@ private fun JamChatLayer(
  * disruptive than the drift.
  */
 private const val DRIFT_TOLERANCE_MS = 1_500L
+
+/** Minutes and seconds, which is how anybody reads a song's length. */
+private fun clock(millis: Long): String {
+    val total = (millis / 1000).coerceAtLeast(0)
+    return "%d:%02d".format(total / 60, total % 60)
+}

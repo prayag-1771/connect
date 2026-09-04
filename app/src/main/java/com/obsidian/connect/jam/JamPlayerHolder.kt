@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import android.util.Log
@@ -50,6 +51,14 @@ object JamPlayerHolder {
     var phase: String by mutableStateOf("")
         private set
 
+    /** How long the track is, once the player knows. Zero until it does. */
+    var durationMs: Long by mutableLongStateOf(0L)
+        private set
+
+    /** Where it has reached, as state, so a seek bar can follow it. */
+    var positionMs: Long by mutableLongStateOf(0L)
+        private set
+
     /**
      * A track asked for before the page could take it.
      *
@@ -81,11 +90,13 @@ object JamPlayerHolder {
             onStateChange = { playing -> onStateChange?.invoke(playing) },
             onPositionMs = { position ->
                 lastPositionMs = position
+                positionMs = position
                 onPositionMs?.invoke(position)
             },
             onError = { message -> onError?.invoke(message) },
             onPhase = { described -> phase = described },
             onFinished = { onFinished?.invoke() },
+            onDurationMs = { length -> durationMs = length },
         )
 
         player = created
@@ -169,7 +180,10 @@ object JamPlayerHolder {
 
     fun requestPosition(context: Context) {
         val active = ensure(context)
-        if (isReady) active.requestPosition()
+        if (isReady) {
+            active.requestPosition()
+            active.requestDuration()
+        }
     }
 
     /** Ends the jam and takes the window back. */
@@ -188,6 +202,8 @@ object JamPlayerHolder {
         pending = null
         loadedVideoId = ""
         lastPositionMs = 0L
+        positionMs = 0L
+        durationMs = 0L
         phase = ""
     }
 

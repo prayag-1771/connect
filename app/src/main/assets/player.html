@@ -64,6 +64,11 @@
         if (!api || !api.getCurrentTime) return;
         Android.position(api.getCurrentTime());
       }
+
+      function reportLength() {
+        if (!api || !api.getDuration) return;
+        Android.length(api.getDuration());
+      }
     </script>
   </body>
 </html>

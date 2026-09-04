@@ -34,6 +34,7 @@ class JamPlayer(
     private val onError: (String) -> Unit = {},
     private val onPhase: (String) -> Unit = {},
     private val onFinished: () -> Unit = {},
+    private val onDurationMs: (Long) -> Unit = {},
 ) {
     val view: WebView = WebView(context).apply {
         settings.javaScriptEnabled = true
@@ -89,6 +90,9 @@ class JamPlayer(
         fun phase(code: Int) = view.post { onPhase(describe(code)) }
 
         @JavascriptInterface
+        fun length(seconds: Double) = view.post { onDurationMs((seconds * 1000).toLong()) }
+
+        @JavascriptInterface
         fun finished() = view.post { onFinished() }
     }
 
@@ -104,6 +108,15 @@ class JamPlayer(
 
     /** Asks the page where it is; the answer comes back through the bridge. */
     fun requestPosition() = run("report()")
+
+    /**
+     * Asks how long the track is.
+     *
+     * Only known once the player has loaded metadata, so it is asked for
+     * repeatedly rather than once - a duration of zero means "not yet", not
+     * "no length".
+     */
+    fun requestDuration() = run("reportLength()")
 
     fun release() {
         runCatching {
