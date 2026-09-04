@@ -16,6 +16,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Color
@@ -420,6 +421,20 @@ fun ChatScreen(
                             tint = MaterialTheme.colorScheme.primary,
                         )
                     }
+
+                    // Capped rather than given the space between the two
+                    // buttons: a title long enough to fill it would push
+                    // Choose for me around every time a track changed, and a
+                    // header that moves is worse than one that is short.
+                    Text(
+                        text = songName(current.title),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .widthIn(max = 132.dp)
+                            .basicMarquee(iterations = Int.MAX_VALUE),
+                    )
                 }
             }
 
@@ -1381,3 +1396,31 @@ private fun TypingLine(palette: ChatColors?) {
 
 /** Within a couple of rows of the bottom still counts as being at the bottom. */
 private const val FOLLOW_WITHIN = 2
+
+/**
+ * The song, out of what YouTube calls the video.
+ *
+ * Uploads are titled for search rather than for reading - "SIMMBA: Tere Bin |
+ * Ranveer Singh, Sara Ali Khan | Tanishk Bagchi, Rahat Fateh Ali Khan, Asees
+ * Kaur" is one line of song and three of credits. The name is nearly always
+ * what comes before the first separator, so everything from there on goes.
+ *
+ * Deliberately crude. A title that does not follow the convention is left
+ * alone rather than mangled by cleverness, because a slightly long name reads
+ * fine and a wrongly cut one does not.
+ */
+private fun songName(title: String): String {
+    val cut = title.trim()
+        // Space-pipe rather than space-pipe-space, so the double bars that
+        // Indian uploads favour are caught as well as the single ones.
+        .substringBefore(" |")
+        .substringBefore(" (")
+        .substringBefore(" [")
+        .substringBefore(" ft.")
+        .substringBefore(" feat.")
+        .substringBefore(" - Official")
+        .trim()
+
+    // If splitting left nothing useful, the original is the better answer.
+    return cut.ifBlank { title.trim() }
+}
