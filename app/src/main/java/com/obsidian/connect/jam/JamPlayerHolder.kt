@@ -36,9 +36,28 @@ object JamPlayerHolder {
     var onPositionMs: ((Long) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
     var onFinished: (() -> Unit)? = null
+
+    /**
+     * Going back a track, wherever it was asked for.
+     *
+     * Set by the app-wide watcher, which is the only place that knows the queue
+     * and the history. The lock screen and the jam screen both call it, so the
+     * two buttons do exactly the same thing rather than nearly.
+     */
+    var onPrevious: (() -> Unit)? = null
     var onReady: (() -> Unit)? = null
 
     var isReady: Boolean = false
+        private set
+
+    /**
+     * Whether the track is actually running.
+     *
+     * Distinct from [isReady], which only says the player finished loading. A
+     * seek from the lock screen has to leave a paused track paused, and that
+     * needs the real answer rather than the nearest available one.
+     */
+    var isPlaying: Boolean = false
         private set
 
     var lastPositionMs: Long = 0L
@@ -87,7 +106,10 @@ object JamPlayerHolder {
                 }
                 onReady?.invoke()
             },
-            onStateChange = { playing -> onStateChange?.invoke(playing) },
+            onStateChange = { playing ->
+                isPlaying = playing
+                onStateChange?.invoke(playing)
+            },
             onPositionMs = { position ->
                 lastPositionMs = position
                 positionMs = position
@@ -199,6 +221,7 @@ object JamPlayerHolder {
         player = null
         attached = false
         isReady = false
+        isPlaying = false
         pending = null
         loadedVideoId = ""
         lastPositionMs = 0L

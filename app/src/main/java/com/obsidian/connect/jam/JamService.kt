@@ -66,6 +66,10 @@ class JamService : Service() {
                         // that somebody asked for the next thing.
                         JamPlayerHolder.onFinished?.invoke()
                     }
+
+                    override fun onSkipToPrevious() {
+                        JamPlayerHolder.onPrevious?.invoke()
+                    }
                 },
             )
             isActive = true
@@ -86,7 +90,7 @@ class JamService : Service() {
             jamRepository.update(
                 pairingId = pairingId,
                 uid = uid,
-                playing = playing ?: JamPlayerHolder.isReady,
+                playing = playing ?: JamPlayerHolder.isPlaying,
                 positionMs = position ?: JamPlayerHolder.lastPositionMs,
             )
         }
@@ -133,7 +137,8 @@ class JamService : Service() {
                         PlaybackState.ACTION_PAUSE or
                         PlaybackState.ACTION_PLAY_PAUSE or
                         PlaybackState.ACTION_SEEK_TO or
-                        PlaybackState.ACTION_SKIP_TO_NEXT,
+                        PlaybackState.ACTION_SKIP_TO_NEXT or
+                        PlaybackState.ACTION_SKIP_TO_PREVIOUS,
                 )
                 .setState(
                     if (playing) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED,

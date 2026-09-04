@@ -225,6 +225,13 @@ class WidgetLiveUpdater @Inject constructor(
                         }
                     }
 
+                    // Skipping back from the lock screen has to mean the same
+                    // thing as skipping back in the app, so both go through
+                    // here rather than each working it out.
+                    JamPlayerHolder.onPrevious = {
+                        scope.launch { goBack(pairingId, uid, session) }
+                    }
+
                     // Started before the player, so the platform already knows
                     // this process is making sound by the time it does.
                     // Kept running while paused rather than stopped, so the
@@ -288,6 +295,35 @@ class WidgetLiveUpdater @Inject constructor(
             next = next,
             remainingQueue = session.queue.drop(1),
             played = played,
+        )
+    }
+
+    /**
+     * Back one track, or back to the start of this one.
+     *
+     * The usual behaviour, and the useful one: most of the time the button is
+     * pressed to hear the current song again from the top.
+     */
+    private suspend fun goBack(pairingId: String, uid: String, session: JamSession) {
+        if (JamPlayerHolder.lastPositionMs > RESTART_WINDOW_MS) {
+            jamRepository.update(pairingId, uid, true, 0L)
+            return
+        }
+
+        val previous = session.playedIds.lastOrNull()
+        if (previous == null) {
+            jamRepository.update(pairingId, uid, true, 0L)
+            return
+        }
+
+        jamRepository.advance(
+            pairingId = pairingId,
+            uid = uid,
+            next = QueueItem(previous, YouTubeSearch.titleFor(previous).orEmpty()),
+            // The song being left goes back to the front, so forward again
+            // returns to where you were.
+            remainingQueue = listOf(QueueItem(session.videoId, session.title)) + session.queue,
+            played = session.playedIds.dropLast(1),
         )
     }
 
@@ -477,3 +513,6 @@ class WidgetLiveUpdater @Inject constructor(
  * the audio worse than the drift did.
  */
 private const val DRIFT_TOLERANCE_MS = 1_500L
+
+/** Past this, previous means "start this again" rather than "go back". */
+private const val RESTART_WINDOW_MS = 4_000L
