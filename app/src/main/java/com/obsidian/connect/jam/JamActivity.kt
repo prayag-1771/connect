@@ -1,6 +1,7 @@
 package com.obsidian.connect.jam
 
 import android.content.Context
+import android.widget.Toast
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -111,6 +112,7 @@ private fun JamScreen(
     // on screen, and the Jam chat button brings it back.
     var chatHidden by remember { mutableStateOf(false) }
     val room by chatViewModel.room.collectAsStateWithLifecycle()
+    val chatProblem by chatViewModel.problem.collectAsStateWithLifecycle()
     val chatMessages by chatViewModel.messages.collectAsStateWithLifecycle()
 
     // The Spotify lookup needs a context to reach its token store, so it is
@@ -268,6 +270,13 @@ private fun JamScreen(
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+        }
+    }
+
+    chatProblem?.let { message ->
+        LaunchedEffect(message) {
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            chatViewModel.dismissProblem()
         }
     }
 

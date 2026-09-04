@@ -11,6 +11,10 @@ import com.obsidian.connect.core.model.JamChatRoom
 import com.obsidian.connect.core.model.JamSession
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -56,22 +60,62 @@ class JamChatViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), emptyList())
 
+    private val _problem = MutableStateFlow<String?>(null)
+    val problem: StateFlow<String?> = _problem.asStateFlow()
+
+    /**
+     * The pairing, waited for rather than sampled.
+     *
+     * It arrives from a Firestore read a moment after this screen opens, so
+     * reading the current value and giving up when it was still null meant a
+     * tap in that first half second did nothing at all - silently, which is the
+     * worst way for a button to fail.
+     */
+    private suspend fun pairing(): String = pairingId.filterNotNull().first()
+
     fun start() {
-        val id = pairingId.value ?: return
         val uid = authRepository.currentUid ?: return
-        viewModelScope.launch { chatRepository.start(id, uid) }
+        viewModelScope.launch {
+            chatRepository.start(pairing(), uid)
+                .onFailure { _problem.value = it.message ?: "Could not open the jam chat." }
+        }
     }
 
     fun join() {
-        val id = pairingId.value ?: return
         val uid = authRepository.currentUid ?: return
-        viewModelScope.launch { chatRepository.join(id, uid) }
+        viewModelScope.launch {
+            chatRepository.join(pairing(), uid)
+                .onFailure { _problem.value = it.message ?: "Could not join." }
+        }
     }
 
     /** Ends it for both, and deletes everything said in it. */
     fun end() {
-        val id = pairingId.value ?: return
-        viewModelScope.launch { chatRepository.end(id) }
+        viewModelScope.launch { chatRepository.end(pairing()) }
+    }
+
+    /**
+     * Why a line stayed a message.
+     *
+     * The three reasons are genuinely different and want different responses:
+     * one needs a key adding, one needs Spotify connecting, and one just means
+     * the song was not found.
+     */
+    private fun whyNot(query: String, spotify: Boolean): String = when {
+        spotify && spotifySearch == null ->
+            "Connect Spotify first, then typing a song will put it on."
+
+        spotify -> "Could not find \"$query\" on Spotify. Sent as a message."
+
+        !YouTubeSearch.isConfigured ->
+            "Searching by name needs a YouTube key. Paste a link and it plays. " +
+                "Sent as a message."
+
+        else -> "Could not find \"$query\" on YouTube. Sent as a message."
+    }
+
+    fun dismissProblem() {
+        _problem.value = null
     }
 
     /**
@@ -82,22 +126,37 @@ class JamChatViewModel @Inject constructor(
      * meaning a moment later.
      */
     fun send(text: String, spotify: Boolean) {
-        val id = pairingId.value ?: return
         val uid = authRepository.currentUid ?: return
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
 
         viewModelScope.launch {
-            val played = if (spotify) playOnSpotify(id, uid, trimmed) else playOnYouTube(id, uid, trimmed)
+            val id = pairing()
+            val played = if (spotify) {
+                playOnSpotify(id, uid, trimmed)
+            } else {
+                playOnYouTube(id, uid, trimmed)
+            }
+
             chatRepository.send(id, uid, trimmed, played.orEmpty())
+                .onFailure { _problem.value = it.message ?: "That did not send." }
+
+            // Said only to whoever typed it. A line that stayed a message looks
+            // identical to one that was never meant to be a song, and without
+            // this the difference is invisible - which reads as the feature
+            // being broken rather than as the search coming up empty.
+            if (played == null) _problem.value = whyNot(trimmed, spotify)
         }
     }
 
     private suspend fun playOnYouTube(pairing: String, uid: String, query: String): String? {
         // A pasted link is unambiguous and should not be searched for.
         extractVideoId(query)?.let { id ->
-            jamRepository.load(pairing, uid, id, query, JamSession.YOUTUBE)
-            return query
+            // Looked up, so the now-playing line reads as a song rather than
+            // as the URL somebody just pasted.
+            val name = YouTubeSearch.titleFor(id) ?: query
+            jamRepository.load(pairing, uid, id, name, JamSession.YOUTUBE)
+            return name
         }
 
         val hit = YouTubeSearch.best(query) ?: return null
