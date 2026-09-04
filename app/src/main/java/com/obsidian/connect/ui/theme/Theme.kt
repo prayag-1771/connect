@@ -9,6 +9,10 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import android.app.Activity
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.platform.LocalContext
 
 private val Ink = Color(0xFF16161A)
@@ -48,6 +52,23 @@ fun ConnectTheme(
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         darkTheme -> DarkColors
         else -> LightColors
+    }
+
+    // The status bar icons follow this app, not the phone.
+    //
+    // enableEdgeToEdge decides light or dark icons from the system setting,
+    // which is the wrong question once the app has a theme of its own: setting
+    // Connect to dark on a phone that is light gave dark icons on a dark
+    // background, and the clock and battery simply disappeared.
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !darkTheme
+                isAppearanceLightNavigationBars = !darkTheme
+            }
+        }
     }
 
     MaterialTheme(colorScheme = colors, content = content)
