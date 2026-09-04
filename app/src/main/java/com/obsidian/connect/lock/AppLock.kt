@@ -37,37 +37,27 @@ object AppLock {
     private const val AUTHENTICATORS = BIOMETRIC_WEAK or DEVICE_CREDENTIAL
 
     /**
-     * When the app was last unlocked, in memory only.
+     * Whether the unlock still stands.
      *
-     * Opening a photo, the jam, or settings starts another activity, which
-     * stops the main one - and re-locking on every stop meant being asked for a
-     * fingerprint on the way back from anywhere in the app. A short grace
-     * window tells the difference between stepping into another of our own
-     * screens and actually putting the phone down.
+     * Held in memory only, and cleared the moment the last Connect screen
+     * stops - so leaving the app locks it and coming back asks again, while
+     * moving between our own screens does not.
      *
-     * Not persisted on purpose: the process dying should mean locking again.
+     * A timer was the wrong shape for this. Opening a photo takes no time at
+     * all, and putting the phone down for ten seconds is still putting it down;
+     * how long somebody was away says nothing about whether they left.
      */
-    private var unlockedAt: Long = 0L
+    private var unlocked: Boolean = false
 
     fun markUnlocked() {
-        unlockedAt = System.currentTimeMillis()
+        unlocked = true
     }
 
     fun forget() {
-        unlockedAt = 0L
+        unlocked = false
     }
 
-    /**
-     * Whether the unlock still stands.
-     *
-     * Thirty seconds is long enough to cover cropping a photo or picking one
-     * from the gallery, and short enough that a phone handed to somebody else
-     * is locked by the time they look at it.
-     */
-    fun isStillUnlocked(): Boolean =
-        unlockedAt > 0 && System.currentTimeMillis() - unlockedAt < GRACE_MS
-
-    private const val GRACE_MS = 30_000L
+    fun isStillUnlocked(): Boolean = unlocked
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -150,14 +140,38 @@ object AppLock {
             BiometricManager.BIOMETRIC_SUCCESS
 
     /**
-     * Whether the biometric prompt is worth showing at all.
+     * Which system authenticators apply, or null when none do.
      *
-     * False when fingerprints are switched off here, and false when the app has
-     * its own PIN and no fingerprint - in that case the only way in is the
-     * screen this app draws itself.
+     * Four combinations, and none of them can lock anybody out:
+     *
+     *  - fingerprint, no app PIN: fingerprint, falling back to the screen lock
+     *  - no fingerprint, no app PIN: the screen lock alone
+     *  - fingerprint, app PIN: fingerprint only, with our own PIN screen behind
+     *  - no fingerprint, app PIN: no system prompt at all, just our PIN screen
+     *
+     * The screen lock is offered whenever there is no app PIN, which is what
+     * makes turning the fingerprint off safe - it was refused before on the
+     * mistaken grounds that it left no way in.
      */
-    fun canPrompt(context: Context): Boolean =
-        isFingerprintEnabled(context) && isAvailable(context)
+    fun authenticators(context: Context): Int? {
+        val fingerprint = isFingerprintEnabled(context) && hasBiometric(context)
+        val ownPin = hasOwnPin(context)
+
+        return when {
+            fingerprint && ownPin -> BIOMETRIC_WEAK
+            fingerprint -> AUTHENTICATORS
+            // An app PIN deliberately shuts the screen lock out: not using the
+            // phone credential is the entire reason for setting one.
+            ownPin -> null
+            else -> DEVICE_CREDENTIAL
+        }
+    }
+
+    fun canPrompt(context: Context): Boolean = authenticators(context) != null
+
+    private fun hasBiometric(context: Context): Boolean =
+        BiometricManager.from(context).canAuthenticate(BIOMETRIC_WEAK) ==
+            BiometricManager.BIOMETRIC_SUCCESS
 
     fun prompt(
         activity: FragmentActivity,
@@ -180,10 +194,7 @@ object AppLock {
             },
         )
 
-        // With a PIN of its own, the phone's screen lock is deliberately not
-        // offered as the fallback - the whole point of setting one is that the
-        // phone's own credential should not open this.
-        val allowed = if (hasOwnPin(activity)) BIOMETRIC_WEAK else AUTHENTICATORS
+        val allowed = authenticators(activity) ?: return onFailure()
 
         val info = BiometricPrompt.PromptInfo.Builder()
             .setTitle("Unlock Connect")

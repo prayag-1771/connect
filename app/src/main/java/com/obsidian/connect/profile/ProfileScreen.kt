@@ -307,6 +307,15 @@ fun AppLockCard() {
                 HorizontalDivider()
                 Spacer(Modifier.height(14.dp))
 
+                Text(
+                    text = "Kept on this phone only. Nothing about the lock is " +
+                        "sent anywhere or shared with them.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(Modifier.height(14.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -314,16 +323,18 @@ fun AppLockCard() {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Fingerprint", style = MaterialTheme.typography.titleSmall)
                         Text(
-                            text = "Worth turning off on a phone whose fingerprints " +
-                                "are not all yours.",
+                            text = if (fingerprint) {
+                                "A fingerprint opens Connect."
+                            } else {
+                                "Off. Worth it on a phone whose fingerprints are " +
+                                    "not all yours."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Switch(
                         checked = fingerprint,
-                        // Turning both off would leave no way in at all.
-                        enabled = hasPin || !fingerprint,
                         onCheckedChange = {
                             fingerprint = it
                             AppLock.setFingerprintEnabled(context, it)
@@ -352,10 +363,6 @@ fun AppLockCard() {
                     }
                     Switch(
                         checked = hasPin,
-                        // Removing the PIN with fingerprints off would lock
-                        // everybody out, so it is refused rather than allowed
-                        // and regretted.
-                        enabled = fingerprint || !hasPin,
                         onCheckedChange = { wanted ->
                             if (wanted) {
                                 settingPin = true

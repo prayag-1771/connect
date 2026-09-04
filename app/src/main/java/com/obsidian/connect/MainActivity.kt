@@ -100,7 +100,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
-        // Coming back from one of our own screens, within the grace window.
+        // Coming back from one of our own screens rather than from away.
         if (AppLock.isEnabled(this) && !unlocked.value && AppLock.isStillUnlocked()) {
             unlocked.value = true
         }
@@ -130,10 +130,9 @@ class MainActivity : FragmentActivity() {
     override fun onStop() {
         super.onStop()
 
-        // The clock starts here rather than the lock slamming shut. Opening a
-        // photo or the jam stops this activity too, and re-locking on every
-        // stop asked for a fingerprint on the way back from anywhere.
-        if (unlocked.value) AppLock.markUnlocked()
+        // The unlock is left standing; AppForeground drops it if this was the
+        // last of our screens. Clearing it here unconditionally is what made
+        // coming back from a photo ask again.
         unlocked.value = false
 
         heartbeat?.cancel()
