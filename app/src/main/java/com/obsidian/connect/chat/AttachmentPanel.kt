@@ -79,6 +79,11 @@ fun AttachmentPanel(
                 label = { Text("GIFs") },
             )
             FilterChip(
+                selected = tab == AttachmentTab.Starred,
+                onClick = { onTab(AttachmentTab.Starred) },
+                label = { Text("Starred") },
+            )
+            FilterChip(
                 selected = tab == AttachmentTab.Saved,
                 onClick = { onTab(AttachmentTab.Saved) },
                 label = { Text("Saved") },
@@ -314,15 +319,20 @@ private fun StarredGifTab(onSend: (GifSearch.Gif) -> Unit) {
     var version by remember { mutableIntStateOf(0) }
     val urls = remember(version) { GifStore.starred(context) }
 
+    // The same fixed height the other two tabs use. fillMaxSize let this one
+    // grow to whatever the drawer would allow, so switching tabs resized the
+    // whole panel.
+    Box(
+        modifier = Modifier.fillMaxWidth().height(PANEL_HEIGHT),
+        contentAlignment = Alignment.Center,
+    ) {
     if (urls.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                text = "Star a GIF and it waits here.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        return
+        Text(
+            text = "Star a GIF and it waits here.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return@Box
     }
 
     LazyVerticalGrid(
@@ -368,5 +378,6 @@ private fun StarredGifTab(onSend: (GifSearch.Gif) -> Unit) {
                 }
             }
         }
+    }
     }
 }
