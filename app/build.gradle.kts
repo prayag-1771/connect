@@ -25,6 +25,25 @@ android {
     compileSdk = 35
 
     defaultConfig {
+        /*
+         * Phones only.
+         *
+         * WebRTC ships native code for four architectures and two of them,
+         * x86 and x86_64, exist for emulators - no handset has ever used
+         * them. They were twenty-four megabytes of an APK that gets sent over
+         * WhatsApp.
+         *
+         * armeabi-v7a stays. It is another six megabytes and neither of our
+         * phones needs it, but dropping it would refuse to install on any
+         * 32-bit device, and that is a worse failure than a larger download.
+         *
+         * The cost is that this APK will not run on an x86 emulator, which
+         * matters to development and to nobody else.
+         */
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+
         applicationId = "com.obsidian.connect"
         minSdk = 26
         targetSdk = 35
