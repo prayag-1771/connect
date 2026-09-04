@@ -16,6 +16,7 @@ import com.obsidian.connect.sync.SyncScheduler
 import com.obsidian.connect.sync.WidgetLiveUpdater
 import com.obsidian.connect.widget.DailyResetReceiver
 import com.obsidian.connect.widget.DrawingBubble
+import com.obsidian.connect.widget.PlaceWatcher
 import com.obsidian.connect.widget.ScheduleBoundaryReceiver
 import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.hilt.android.HiltAndroidApp
@@ -94,6 +95,10 @@ class ConnectApplication : Application(), Configuration.Provider, ImageLoaderFac
 
         // Turns the face off each morning, when that is switched on.
         DailyResetReceiver.schedule(this)
+
+        // Follows the phone by cell tower and wifi while the process is alive.
+        // The GPS question is asked on the two-minute beat instead.
+        PlaceWatcher.attach(this)
 
         // Runs a sync every couple of minutes even with the app closed, which
         // the fifteen-minute worker on its own cannot.

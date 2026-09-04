@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
+import android.os.Build
 import androidx.core.content.ContextCompat
 
 /**
@@ -24,6 +25,7 @@ object PlaceGuard {
     private const val PREFS = "connect_places"
     private const val KEY_PLACES = "places"
     private const val KEY_ENABLED = "location_guard"
+    private const val KEY_WAS_AT_PLACE = "was_at_place"
 
     /** Roughly a building and its car park. */
     const val DEFAULT_RADIUS_M = 150f
@@ -111,6 +113,66 @@ object PlaceGuard {
                 .mapNotNull { provider -> manager.getLastKnownLocation(provider) }
                 .maxByOrNull { it.time }
         }.getOrNull()
+    }
+
+    /**
+     * Asks for a position now, rather than reading whatever was lying around.
+     *
+     * The network provider first: it works out where you are from cell towers
+     * and nearby wifi, costs almost nothing, and is accurate to a few hundred
+     * metres - which is the right order for a question asked with a
+     * hundred-and-fifty metre radius. GPS is only worth waking for when that
+     * comes back with nothing.
+     *
+     * Everything here is best-effort. A fix that does not arrive leaves the
+     * cached one in place rather than failing.
+     */
+    fun requestFix(context: Context) {
+        if (!isEnabled(context)) return
+        if (!hasPermission(context)) return
+
+        val manager = context.getSystemService(LocationManager::class.java) ?: return
+
+        val provider = when {
+            manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ->
+                LocationManager.NETWORK_PROVIDER
+            manager.isProviderEnabled(LocationManager.GPS_PROVIDER) ->
+                LocationManager.GPS_PROVIDER
+            else -> return
+        }
+
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                manager.getCurrentLocation(
+                    provider,
+                    null,
+                    context.mainExecutor,
+                ) { /* Cached by the system; read on the next evaluation. */ }
+            } else {
+                @Suppress("DEPRECATION")
+                manager.requestSingleUpdate(
+                    provider,
+                    { /* Same - the point is to refresh what lastKnown returns. */ },
+                    null,
+                )
+            }
+        }
+    }
+
+    /**
+     * Whether the answer has changed since it was last acted on.
+     *
+     * Remembered, so the widget is redrawn on arriving and on leaving and not
+     * on every check in between - a redraw costs a bitmap and a round trip to
+     * the launcher, and the answer is the same nearly every time.
+     */
+    fun stateChanged(context: Context): Boolean {
+        val now = isAtSavedPlace(context)
+        val before = prefs(context).getBoolean(KEY_WAS_AT_PLACE, false)
+        if (now == before) return false
+
+        prefs(context).edit().putBoolean(KEY_WAS_AT_PLACE, now).apply()
+        return true
     }
 
     private fun encode(place: Place): String =

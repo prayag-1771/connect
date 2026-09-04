@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.SystemClock
+import com.obsidian.connect.widget.WatchWidgetProvider
+import com.obsidian.connect.widget.PlaceGuard
 
 /**
  * Pulls the closed-app delay down from fifteen minutes to about two.
@@ -28,6 +30,19 @@ class FastSyncReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         SyncScheduler.now(context)
+
+        // Where the phone is, asked on the same beat.
+        //
+        // The widget used to be redrawn only when something arrived - a photo,
+        // a message - so on a quiet afternoon it might not redraw for hours and
+        // walking into a saved place would not hide the face. The question is
+        // now asked every time this fires, and the face redrawn only when the
+        // answer actually changes.
+        PlaceGuard.requestFix(context)
+        if (PlaceGuard.stateChanged(context)) {
+            WatchWidgetProvider.refreshAll(context)
+        }
+
         schedule(context)
     }
 
