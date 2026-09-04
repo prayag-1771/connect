@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -67,6 +68,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -195,6 +198,7 @@ fun ChatScreen(
     ) { granted -> if (granted) viewModel.startRecording() }
 
     val jamSession by viewModel.jamSession.collectAsStateWithLifecycle()
+    val partnerOnline by viewModel.partnerOnline.collectAsStateWithLifecycle()
     val chatTheme by viewModel.chatTheme.collectAsStateWithLifecycle()
     val palette = chatTheme.colors(isSystemInDarkTheme() || AppearanceStore.themeMode == ThemeMode.Dark)
 
@@ -340,9 +344,28 @@ fun ChatScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
 
+    // The room warms when you are both in it.
+    //
+    // Derived from the palette in use rather than a fixed colour, so it works
+    // under every chat theme and in the dark - a literal warm tint would be
+    // invisible on one and glaring on another. Deliberately slight: this is
+    // meant to be noticed by its absence when they leave, not read as a
+    // status.
+    val plain = palette?.background ?: MaterialTheme.colorScheme.background
+    val room by animateColorAsState(
+        targetValue = if (partnerOnline) {
+            lerp(plain, MaterialTheme.colorScheme.primaryContainer, 0.10f)
+        } else {
+            plain
+        },
+        animationSpec = tween(1_200),
+        label = "room",
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(room)
             .padding(
                 top = contentPadding.calculateTopPadding(),
                 bottom = maxOf(imeBottom, barBottom),
@@ -513,6 +536,37 @@ fun ChatScreen(
                 clip = clip,
                 onDiscard = viewModel::discardPendingVoice,
                 onSend = viewModel::sendPendingVoice,
+            )
+        }
+
+        // How near they are, as a colour.
+        //
+        // Away is the ordinary outline. Present is a slow pulse, barely there.
+        // Typing is the same pulse, quicker and warmer - the point being that
+        // it escalates rather than a second indicator appearing.
+        val theyAreTyping = partnerReceipt?.isTyping() == true
+        val breath = rememberInfiniteTransition(label = "presence")
+        val depth by breath.animateFloat(
+            initialValue = 0f,
+            targetValue = if (partnerOnline) 1f else 0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(if (theyAreTyping) 900 else 2_600),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "breath",
+        )
+
+        val presenceGlow = when {
+            !partnerOnline -> MaterialTheme.colorScheme.outlineVariant
+            theyAreTyping -> lerp(
+                MaterialTheme.colorScheme.outlineVariant,
+                MaterialTheme.colorScheme.tertiary,
+                depth,
+            )
+            else -> lerp(
+                MaterialTheme.colorScheme.outlineVariant,
+                MaterialTheme.colorScheme.primary,
+                depth * 0.7f,
             )
         }
 

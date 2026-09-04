@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -42,13 +43,14 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlinx.coroutines.flow.flow
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val authRepository: AuthRepository,
-    userRepository: UserRepository,
+    private val userRepository: UserRepository,
     private val messageRepository: MessageRepository,
     private val choiceRepository: ChoiceRepository,
     private val jamRepository: JamRepository,
@@ -152,6 +154,24 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             jamRepository.update(id, uid, playing, JamPlayerHolder.lastPositionMs)
+        }
+    }
+
+    /**
+     * Whether they have the app in front of them.
+     *
+     * Recomputed on a slow pulse as well as on change, because going away is
+     * the absence of a heartbeat - nothing arrives to announce it.
+     */
+    val partnerOnline: StateFlow<Boolean> = partnerId
+        .flatMapLatest { id -> if (id == null) flowOf(null) else userRepository.observe(id) }
+        .combine(presenceTicker()) { user, now -> user?.isOnline(now) == true }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), false)
+
+    private fun presenceTicker(): Flow<Long> = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(20_000)
         }
     }
 
