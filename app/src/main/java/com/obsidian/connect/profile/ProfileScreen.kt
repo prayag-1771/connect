@@ -35,6 +35,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -271,30 +275,175 @@ fun AppLockCard() {
     if (!AppLock.isAvailable(context)) return
 
     var enabled by remember { mutableStateOf(AppLock.isEnabled(context)) }
+    var fingerprint by remember { mutableStateOf(AppLock.isFingerprintEnabled(context)) }
+    var hasPin by remember { mutableStateOf(AppLock.hasOwnPin(context)) }
+    var settingPin by remember { mutableStateOf(false) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Lock the app", style = MaterialTheme.typography.titleMedium)
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Lock the app", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = "Ask to be let in every time Connect is opened.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = {
+                        enabled = it
+                        AppLock.setEnabled(context, it)
+                    },
+                )
+            }
+
+            if (enabled) {
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Fingerprint", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            text = "Worth turning off on a phone whose fingerprints " +
+                                "are not all yours.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = fingerprint,
+                        // Turning both off would leave no way in at all.
+                        enabled = hasPin || !fingerprint,
+                        onCheckedChange = {
+                            fingerprint = it
+                            AppLock.setFingerprintEnabled(context, it)
+                        },
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("A PIN of its own", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            text = if (hasPin) {
+                                "Set. The screen lock on this phone will not open Connect."
+                            } else {
+                                "Off, so the screen lock on this phone opens Connect. " +
+                                    "Set one if somebody else knows it."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = hasPin,
+                        // Removing the PIN with fingerprints off would lock
+                        // everybody out, so it is refused rather than allowed
+                        // and regretted.
+                        enabled = fingerprint || !hasPin,
+                        onCheckedChange = { wanted ->
+                            if (wanted) {
+                                settingPin = true
+                            } else {
+                                AppLock.clearOwnPin(context)
+                                hasPin = false
+                            }
+                        },
+                    )
+                }
+
+                if (hasPin) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = { settingPin = true }) { Text("Change PIN") }
+                }
+            }
+        }
+    }
+
+    if (settingPin) {
+        PinDialog(
+            onDismiss = { settingPin = false },
+            onSet = { pin ->
+                AppLock.setOwnPin(context, pin)
+                hasPin = true
+                settingPin = false
+            },
+        )
+    }
+}
+
+/**
+ * Setting a PIN, twice.
+ *
+ * Confirmed rather than typed once, because a PIN nobody can remember locks the
+ * app for good - there is no account recovery behind this and nothing on a
+ * server to reset it with.
+ */
+@Composable
+private fun PinDialog(onDismiss: () -> Unit, onSet: (String) -> Unit) {
+    var first by remember { mutableStateOf("") }
+    var second by remember { mutableStateOf("") }
+
+    val longEnough = first.length >= 4
+    val matches = first == second
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set a PIN") },
+        text = {
+            Column {
                 Text(
-                    text = "Ask for your fingerprint or screen lock every time " +
-                        "Connect is opened.",
+                    text = "Four to eight digits. Nothing can reset this for you, " +
+                        "so pick one you will not forget.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = first,
+                    onValueChange = { first = it.filter(Char::isDigit).take(8) },
+                    label = { Text("PIN") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = second,
+                    onValueChange = { second = it.filter(Char::isDigit).take(8) },
+                    label = { Text("Again") },
+                    singleLine = true,
+                    isError = second.isNotEmpty() && !matches,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                )
             }
-            Switch(
-                checked = enabled,
-                onCheckedChange = {
-                    enabled = it
-                    AppLock.setEnabled(context, it)
-                },
-            )
-        }
-    }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSet(first) },
+                enabled = longEnough && matches,
+            ) { Text("Set it") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable

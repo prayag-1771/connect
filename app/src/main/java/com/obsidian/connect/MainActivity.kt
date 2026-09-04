@@ -75,7 +75,13 @@ class MainActivity : FragmentActivity() {
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     if (AppLock.isEnabled(this) && !unlocked.value) {
-                        LockedScreen(onUnlock = ::askToUnlock)
+                        LockedScreen(
+                            onUnlock = ::askToUnlock,
+                            onUnlocked = {
+                                unlocked.value = true
+                                AppLock.markUnlocked()
+                            },
+                        )
                     } else {
                         ConnectApp(
                             requestedTab = requestedTab.value,
@@ -94,7 +100,17 @@ class MainActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (AppLock.isEnabled(this) && !unlocked.value) askToUnlock()
+        // Coming back from one of our own screens, within the grace window.
+        if (AppLock.isEnabled(this) && !unlocked.value && AppLock.isStillUnlocked()) {
+            unlocked.value = true
+        }
+
+        // Only when a fingerprint is actually an option. With fingerprints off
+        // or an app PIN set and no biometric, the way in is the screen this app
+        // draws, and throwing a system prompt at somebody first is noise.
+        if (AppLock.isEnabled(this) && !unlocked.value && AppLock.canPrompt(this)) {
+            askToUnlock()
+        }
 
         heartbeat?.cancel()
         heartbeat = lifecycleScope.launch {
@@ -113,6 +129,11 @@ class MainActivity : FragmentActivity() {
      */
     override fun onStop() {
         super.onStop()
+
+        // The clock starts here rather than the lock slamming shut. Opening a
+        // photo or the jam stops this activity too, and re-locking on every
+        // stop asked for a fingerprint on the way back from anywhere.
+        if (unlocked.value) AppLock.markUnlocked()
         unlocked.value = false
 
         heartbeat?.cancel()
@@ -125,7 +146,10 @@ class MainActivity : FragmentActivity() {
     private fun askToUnlock() {
         AppLock.prompt(
             activity = this,
-            onSuccess = { unlocked.value = true },
+            onSuccess = {
+                unlocked.value = true
+                AppLock.markUnlocked()
+            },
             // Cancelled or locked out. Leaving the app on the lock screen with
             // its own retry button is better than closing under someone.
             onFailure = { unlocked.value = false },
