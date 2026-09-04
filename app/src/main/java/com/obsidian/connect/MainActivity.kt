@@ -24,6 +24,7 @@ import com.obsidian.connect.auth.AuthScreen
 import com.obsidian.connect.lock.AppLock
 import com.obsidian.connect.lock.LockedScreen
 import com.obsidian.connect.pairing.PairingScreen
+import com.obsidian.connect.jam.JamRequestGate
 import com.obsidian.connect.ui.theme.ConnectTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -104,6 +105,12 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun applyIntent(intent: Intent?) {
+        // Arrived from the white dot on the widget, which exists precisely to
+        // put this question in front of somebody.
+        if (intent?.getBooleanExtra(EXTRA_JAM_REQUEST, false) == true) {
+            JamRequestGate.raise()
+        }
+
         val name = intent?.getStringExtra(EXTRA_TAB) ?: return
         val tab = HomeTab.entries.firstOrNull { it.name == name } ?: return
         requestedTab.value = tab
@@ -112,6 +119,7 @@ class MainActivity : FragmentActivity() {
 
     companion object {
         const val EXTRA_TAB = "open_tab"
+        const val EXTRA_JAM_REQUEST = "jam_request"
     }
 }
 

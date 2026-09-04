@@ -108,6 +108,7 @@ class ConnectApplication : Application(), Configuration.Provider, ImageLoaderFac
         liveScope.launch { widgetLiveUpdater.watchCalls() }
         liveScope.launch { widgetLiveUpdater.watchChoices() }
         liveScope.launch { widgetLiveUpdater.watchJam() }
+        liveScope.launch { widgetLiveUpdater.watchJamChat() }
     }
 
     override val workManagerConfiguration: Configuration

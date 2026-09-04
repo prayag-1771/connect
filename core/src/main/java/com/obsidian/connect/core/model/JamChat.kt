@@ -22,6 +22,15 @@ data class JamChatRoom(
     val participants: List<String> = emptyList(),
 
     val startedAtMillis: Long = 0L,
+
+    /**
+     * When the other person was last actively asked to come in.
+     *
+     * A timestamp rather than a flag, so asking again after a decline is
+     * meaningful: the other phone remembers which request it turned down, and a
+     * newer one is a new question rather than the same one reappearing.
+     */
+    val requestedAtMillis: Long = 0L,
 ) {
     val isLive: Boolean get() = startedBy.isNotBlank()
 

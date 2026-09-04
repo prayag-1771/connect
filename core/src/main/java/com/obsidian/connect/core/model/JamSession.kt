@@ -15,6 +15,12 @@ import com.google.firebase.firestore.DocumentId
  * SDK can, but demands Premium at both ends. A player this app owns is the only
  * one it can actually keep in step.
  */
+/** One track waiting its turn. */
+data class QueueItem(
+    val videoId: String = "",
+    val title: String = "",
+)
+
 data class JamSession(
     @DocumentId val id: String = "",
 
@@ -53,6 +59,23 @@ data class JamSession(
      * between that and listening together is worth showing.
      */
     val listeners: List<String> = emptyList(),
+
+    /**
+     * What plays next, in order.
+     *
+     * On the session rather than on either phone, because both of you add to it
+     * and both of you should see the same list - a queue only one person can
+     * see is a playlist.
+     */
+    val queue: List<QueueItem> = emptyList(),
+
+    /**
+     * Everything already played this session.
+     *
+     * Kept so that when the queue runs dry and something is picked
+     * automatically, it is not the song that just finished.
+     */
+    val playedIds: List<String> = emptyList(),
 
     val updatedAtMillis: Long = 0L,
 ) {

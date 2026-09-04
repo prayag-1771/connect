@@ -50,7 +50,23 @@ class JamChatRepository @Inject constructor(
                 "startedBy" to uid,
                 "participants" to listOf(uid),
                 "startedAtMillis" to System.currentTimeMillis(),
+                // Opening a room is itself an invitation.
+                "requestedAtMillis" to System.currentTimeMillis(),
             ),
+        ).await()
+    }
+
+    /**
+     * Asks the other person to come in.
+     *
+     * Separate from opening the room, because the room may have been open for a
+     * while by the time somebody thinks to invite them - and because asking
+     * twice is a real thing to want to do.
+     */
+    suspend fun request(pairingId: String): Result<Unit> = runCatching {
+        room(pairingId).set(
+            mapOf("requestedAtMillis" to System.currentTimeMillis()),
+            SetOptions.merge(),
         ).await()
     }
 

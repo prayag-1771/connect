@@ -5,6 +5,7 @@ import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.FirebaseFirestore
 import com.obsidian.connect.core.FirestorePaths
 import com.obsidian.connect.core.model.JamSession
+import com.obsidian.connect.core.model.QueueItem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -112,6 +113,65 @@ class JamRepository @Inject constructor(
         ).await()
     }
 
+    /** Adds a track to the end of the queue. */
+    suspend fun enqueue(
+        pairingId: String,
+        item: QueueItem,
+    ): Result<Unit> = runCatching {
+        session(pairingId).set(
+            mapOf(
+                "queue" to FieldValue.arrayUnion(
+                    mapOf("videoId" to item.videoId, "title" to item.title),
+                ),
+            ),
+            SetOptions.merge(),
+        ).await()
+    }
+
+    suspend fun dequeue(pairingId: String, item: QueueItem): Result<Unit> = runCatching {
+        session(pairingId).set(
+            mapOf(
+                "queue" to FieldValue.arrayRemove(
+                    mapOf("videoId" to item.videoId, "title" to item.title),
+                ),
+            ),
+            SetOptions.merge(),
+        ).await()
+    }
+
+    /**
+     * Moves to the next track, whatever it is.
+     *
+     * The whole session is written at once rather than the queue being popped
+     * and the track set separately: those two happening apart would leave a
+     * moment where the finished song is still current and its replacement is
+     * already out of the queue.
+     */
+    suspend fun advance(
+        pairingId: String,
+        uid: String,
+        next: QueueItem,
+        remainingQueue: List<QueueItem>,
+        played: List<String>,
+    ): Result<Unit> = runCatching {
+        session(pairingId).set(
+            mapOf(
+                "service" to JamSession.YOUTUBE,
+                "videoId" to next.videoId,
+                "title" to next.title,
+                "playing" to true,
+                "positionMs" to 0L,
+                "byUid" to uid,
+                "queue" to remainingQueue.map {
+                    mapOf("videoId" to it.videoId, "title" to it.title)
+                },
+                "playedIds" to played.takeLast(PLAYED_MEMORY),
+                "updatedAtMillis" to System.currentTimeMillis(),
+            ),
+            SetOptions.merge(),
+        ).await()
+    }
+
     suspend fun end(pairingId: String): Result<Unit> = runCatching {
         session(pairingId).delete().await()
     }
@@ -119,5 +179,8 @@ class JamRepository @Inject constructor(
     private companion object {
         const val JAM = "jam"
         const val SESSION = "session"
+
+        /** Enough to stop a short session looping; not a permanent history. */
+        const val PLAYED_MEMORY = 40
     }
 }

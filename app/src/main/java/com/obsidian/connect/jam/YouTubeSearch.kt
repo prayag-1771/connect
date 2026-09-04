@@ -130,7 +130,48 @@ object YouTubeSearch {
         }
     }
 
+    /**
+     * Several playable results for a query, minus anything already heard.
+     *
+     * Used when a queue runs dry: the point is to carry on in the same
+     * territory without repeating, so a wider net is cast than for a direct
+     * search and the exclusions are applied afterwards.
+     */
+    suspend fun similar(query: String, exclude: List<String>): List<Hit> =
+        withContext(Dispatchers.IO) {
+            if (!isConfigured || query.isBlank()) return@withContext emptyList()
+
+            runCatching {
+                val encoded = URLEncoder.encode(query, "UTF-8")
+                val search = get(
+                    "https://www.googleapis.com/youtube/v3/search" +
+                        "?part=snippet&type=video&videoCategoryId=10&maxResults=$RELATED" +
+                        "&q=$encoded&key=${BuildConfig.YOUTUBE_KEY}",
+                ) ?: return@runCatching emptyList()
+
+                val items = JSONObject(search).optJSONArray("items")
+                    ?: return@runCatching emptyList()
+
+                val found = (0 until items.length()).mapNotNull { index ->
+                    val item = items.optJSONObject(index) ?: return@mapNotNull null
+                    val id = item.optJSONObject("id")?.optString("videoId").orEmpty()
+                    if (id.isBlank() || id in exclude) return@mapNotNull null
+                    Hit(
+                        videoId = id,
+                        title = item.optJSONObject("snippet")?.optString("title").orEmpty(),
+                    )
+                }
+                if (found.isEmpty()) return@runCatching emptyList()
+
+                val playable = embeddable(found.map { it.videoId })
+                found.filter { it.videoId in playable }
+            }.getOrDefault(emptyList())
+        }
+
     /** Enough that a blocked official upload is not the end of the search. */
     private const val CANDIDATES = 5
+
+    /** Wider, because most of these will be excluded or unplayable. */
+    private const val RELATED = 15
 
 }

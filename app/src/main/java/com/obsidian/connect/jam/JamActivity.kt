@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
@@ -130,6 +132,7 @@ private fun JamScreen(
     }
 
     var link by remember { mutableStateOf("") }
+    var queued by remember { mutableStateOf("") }
 
     // The player is not here. It lives in JamPlayerHolder, driven by the
     // app-wide watcher, so that leaving this screen does not stop the music.
@@ -249,7 +252,7 @@ private fun JamScreen(
             OutlinedTextField(
                 value = link,
                 onValueChange = { link = it },
-                label = { Text("Paste a YouTube link") },
+                label = { Text("A song name, or a link") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -262,6 +265,61 @@ private fun JamScreen(
                 enabled = link.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Put it on for both of us") }
+
+            // The queue, under the thing that starts a track - which is where
+            // somebody already is when they think of the next one.
+            val queue = session?.queue.orEmpty()
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = queued,
+                    onValueChange = { queued = it },
+                    label = { Text("Add to the queue") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedButton(
+                    onClick = {
+                        viewModel.enqueue(queued)
+                        queued = ""
+                    },
+                    enabled = queued.isNotBlank(),
+                ) { Text("Add") }
+            }
+
+            if (queue.isNotEmpty()) {
+                Text(
+                    text = "Up next",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                queue.forEachIndexed { index, item ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "${index + 1}. ${item.title.ifBlank { item.videoId }}",
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = { viewModel.removeFromQueue(item) }) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Remove",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                }
+            }
 
             problem?.let {
                 Text(
@@ -295,6 +353,7 @@ private fun JamScreen(
             chatHidden = false
         },
         onHide = { chatHidden = true },
+        onRequest = chatViewModel::request,
         onSend = { text -> chatViewModel.send(text, spotify) },
     )
 }
@@ -315,6 +374,7 @@ private fun JamChatLayer(
     onJoin: () -> Unit,
     onEnd: () -> Unit,
     onHide: () -> Unit,
+    onRequest: () -> Unit,
     onSend: (String) -> Unit,
 ) {
     val current = room ?: return
@@ -338,6 +398,7 @@ private fun JamChatLayer(
         onSend = onSend,
         onEnd = onEnd,
         onHide = onHide,
+        onRequest = onRequest,
     )
 }
 

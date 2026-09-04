@@ -6,6 +6,7 @@ import com.obsidian.connect.core.data.MessageRepository
 import com.obsidian.connect.core.data.MomentRepository
 import com.obsidian.connect.core.data.CallRepository
 import com.obsidian.connect.core.data.ChoiceRepository
+import com.obsidian.connect.core.data.JamChatRepository
 import com.obsidian.connect.core.data.JamRepository
 import com.obsidian.connect.core.data.PairingRepository
 import com.obsidian.connect.core.data.ReminderRepository
@@ -16,7 +17,10 @@ import com.obsidian.connect.alarm.ReminderAlarmScheduler
 import com.obsidian.connect.call.CallActivity
 import com.obsidian.connect.core.model.CallState
 import com.obsidian.connect.core.model.JamSession
+import com.obsidian.connect.core.model.QueueItem
+import com.obsidian.connect.jam.YouTubeSearch
 import com.obsidian.connect.jam.JamPlayerHolder
+import com.obsidian.connect.jam.JamRequestGate
 import com.obsidian.connect.jam.JamService
 import com.obsidian.connect.core.model.Moment
 import com.obsidian.connect.core.model.ReminderScope
@@ -62,6 +66,7 @@ class WidgetLiveUpdater @Inject constructor(
     private val callRepository: CallRepository,
     private val choiceRepository: ChoiceRepository,
     private val jamRepository: JamRepository,
+    private val jamChatRepository: JamChatRepository,
     private val syncState: SyncState,
 ) {
 
@@ -211,8 +216,12 @@ class WidgetLiveUpdater @Inject constructor(
                     // reports. Without this the session goes on claiming to be
                     // playing, and the pause button in the chat offers to stop
                     // silence.
+                    // Only the driving phone advances. Both reacting would
+                    // race, and two writes of "next" would skip a track.
                     JamPlayerHolder.onFinished = {
-                        scope.launch { jamRepository.update(pairingId, uid, false, 0L) }
+                        if (session.byUid == uid) {
+                            scope.launch { advance(pairingId, uid, session) }
+                        }
                     }
 
                     // Started before the player, so the platform already knows
@@ -236,6 +245,63 @@ class WidgetLiveUpdater @Inject constructor(
                         JamPlayerHolder.pause(context)
                     }
                 }
+            }
+    }
+
+    /**
+     * Plays whatever is next when a track runs out.
+     *
+     * The queue first, and failing that something in the same territory that
+     * has not already played this session - so a jam left alone carries on
+     * rather than falling silent, and never loops the song it just finished.
+     */
+    private suspend fun advance(pairingId: String, uid: String, session: JamSession) {
+        val played = session.playedIds + session.videoId
+
+        val next = session.queue.firstOrNull()
+            ?: YouTubeSearch.similar(session.title, exclude = played)
+                .firstOrNull()
+                ?.let { QueueItem(it.videoId, it.title) }
+
+        if (next == null) {
+            jamRepository.update(pairingId, uid, false, 0L)
+            return
+        }
+
+        jamRepository.advance(
+            pairingId = pairingId,
+            uid = uid,
+            next = next,
+            remainingQueue = session.queue.drop(1),
+            played = played,
+        )
+    }
+
+    /**
+     * Notices somebody waiting in a jam chat.
+     *
+     * Watched app-wide rather than from the jam screen, because the whole point
+     * is reaching somebody who is not looking at it - in another tab, or with
+     * the app shut and only the widget on screen.
+     */
+    suspend fun watchJamChat() {
+        pairing()
+            .flatMapLatest { current ->
+                if (current == null) flowOf(null) else jamChatRepository.observeRoom(current.first)
+            }
+            .collect { room ->
+                val uid = authRepository.currentUid
+                val waiting = uid != null && room != null && room.isWaitingFor(uid)
+
+                if (waiting) {
+                    // Asked in the app if it is open, and marked on the face if
+                    // it is not. Both end in the same dialog.
+                    JamRequestGate.raiseIfNew(room.requestedAtMillis)
+                }
+
+                if (waiting == WidgetCaptionStore.hasJamRequest(context)) return@collect
+                WidgetCaptionStore.writeJamRequest(context, waiting)
+                MomentWidgetUpdater.refresh(context)
             }
     }
 

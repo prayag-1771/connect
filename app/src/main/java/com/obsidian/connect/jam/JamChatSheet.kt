@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -56,6 +58,7 @@ fun JamChatSheet(
     onSend: (String) -> Unit,
     onEnd: () -> Unit,
     onHide: () -> Unit,
+    onRequest: () -> Unit,
 ) {
     var draft by remember { mutableStateOf("") }
 
@@ -83,6 +86,7 @@ fun JamChatSheet(
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
+                TextButton(onClick = onRequest) { Text("Request") }
                 TextButton(onClick = onEnd) { Text("End") }
             }
 
@@ -137,42 +141,33 @@ fun JamChatSheet(
 }
 
 /**
- * A line reads differently depending on whether it found a song.
+ * One line, as a message.
  *
- * One that did is shown as an event rather than as speech - the words were an
- * instruction, and printing them as a remark would misrepresent what happened.
+ * A conversation first. Every line is something somebody said and sits where
+ * they said it - yours on the right, theirs on the left - and a line that also
+ * put a song on carries that underneath rather than being replaced by it. The
+ * words were still spoken, and turning them into a system notice threw away
+ * half of what happened.
  */
 @Composable
 private fun Line(message: JamChatMessage, mine: Boolean) {
-    if (message.becameATrack) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.MusicNote,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(15.dp),
-            )
-            Text(
-                text = "${if (mine) "You" else "They"} put on ${message.playedTitle}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-        return
-    }
-
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
+        horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
     ) {
         Box(
             modifier = Modifier
                 .widthIn(max = 260.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(
+                    RoundedCornerShape(
+                        topStart = 14.dp,
+                        topEnd = 14.dp,
+                        // The squared corner points at whoever sent it, which
+                        // is quicker to read than colour alone.
+                        bottomStart = if (mine) 14.dp else 4.dp,
+                        bottomEnd = if (mine) 4.dp else 14.dp,
+                    ),
+                )
                 .background(
                     if (mine) {
                         MaterialTheme.colorScheme.primaryContainer
@@ -183,6 +178,30 @@ private fun Line(message: JamChatMessage, mine: Boolean) {
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             Text(text = message.text, style = MaterialTheme.typography.bodyMedium)
+        }
+
+        if (message.becameATrack) {
+            Spacer(Modifier.size(3.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(horizontal = 4.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.PlayCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(14.dp),
+                )
+                Text(
+                    text = message.playedTitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 230.dp),
+                )
+            }
         }
     }
 }

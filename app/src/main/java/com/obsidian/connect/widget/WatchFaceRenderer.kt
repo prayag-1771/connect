@@ -50,6 +50,7 @@ object WatchFaceRenderer {
 
     private val DOT_GREEN = 0xFF3DDC84u.toInt()
     private val DOT_YELLOW = 0xFFFFC53Du.toInt()
+    private val DOT_WHITE = 0xFFF2F2F2u.toInt()
     private val DOT_OUTLINE = 0xCC0B0B0Fu.toInt()
 
     /** Stand-in disc for before any photo has arrived. */
@@ -104,8 +105,13 @@ object WatchFaceRenderer {
      * Returns null when there is nothing to say, so the caller can hide the
      * view entirely rather than stacking an empty bitmap over the clock.
      */
-    fun dotsOverlay(size: Int, hasUnread: Boolean, hasNewChoice: Boolean): Bitmap? {
-        if (!hasUnread && !hasNewChoice) return null
+    fun dotsOverlay(
+        size: Int,
+        hasUnread: Boolean,
+        hasNewChoice: Boolean,
+        hasJamRequest: Boolean = false,
+    ): Bitmap? {
+        if (!hasUnread && !hasNewChoice && !hasJamRequest) return null
 
         val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
@@ -117,6 +123,7 @@ object WatchFaceRenderer {
         // drawing and needs its own tap target.
         if (hasUnread) dot(canvas, centre, radius, size, UNREAD_ANGLE, DOT_GREEN)
         if (hasNewChoice) dot(canvas, centre, radius, size, CHOICE_ANGLE, DOT_YELLOW)
+        if (hasJamRequest) dot(canvas, centre, radius, size, JAM_ANGLE, DOT_WHITE)
 
         return output
     }
@@ -151,6 +158,9 @@ object WatchFaceRenderer {
     /** Roughly ten-thirty, and a little below it. */
     private const val UNREAD_ANGLE = -135.0
     private const val CHOICE_ANGLE = -163.0
+
+    /** Below the other two, continuing down the left rim. */
+    private const val JAM_ANGLE = 169.0
 
     /**
      * Centre-crops [source] to fill the circle of [radius] exactly.

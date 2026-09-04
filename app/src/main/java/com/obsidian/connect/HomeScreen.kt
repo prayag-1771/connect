@@ -21,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.obsidian.connect.chat.ChatFocus
+import com.obsidian.connect.jam.JamRequestDialog
 import com.obsidian.connect.profile.DailyArmPrompt
 import com.obsidian.connect.chat.ChatScreen
 import com.obsidian.connect.draw.DrawScreen
@@ -69,6 +70,10 @@ fun HomeScreen(
 
     // The morning question, if it is switched on and today is unanswered.
     DailyArmPrompt()
+
+    // Somebody waiting in a jam chat, asked here rather than on the jam screen
+    // because that is exactly where they are not.
+    JamRequestDialog()
 
     Scaffold(
         modifier = modifier,

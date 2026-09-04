@@ -20,6 +20,7 @@ object WidgetCaptionStore {
     private const val KEY_UNREAD = "unread"
     private const val KEY_NEW_DRAWING = "new_drawing"
         const val KEY_NEW_CHOICE = "new_choice"
+        const val KEY_JAM_REQUEST = "jam_request"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -57,6 +58,14 @@ object WidgetCaptionStore {
 
     fun hasNewChoice(context: Context): Boolean =
         prefs(context).getBoolean(KEY_NEW_CHOICE, false)
+
+    /** Somebody is waiting for you in a jam chat. */
+    fun writeJamRequest(context: Context, pending: Boolean) {
+        prefs(context).edit().putBoolean(KEY_JAM_REQUEST, pending).apply()
+    }
+
+    fun hasJamRequest(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_JAM_REQUEST, false)
 
     fun hasNewDrawing(context: Context): Boolean =
         prefs(context).getBoolean(KEY_NEW_DRAWING, false)

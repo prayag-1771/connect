@@ -81,6 +81,15 @@ class JamChatViewModel @Inject constructor(
         }
     }
 
+    /** Asks the other person to come in, again if need be. */
+    fun request() {
+        viewModelScope.launch {
+            chatRepository.request(pairing())
+                .onSuccess { _problem.value = "Asked them to join." }
+                .onFailure { _problem.value = it.message ?: "Could not send that." }
+        }
+    }
+
     fun join() {
         val uid = authRepository.currentUid ?: return
         viewModelScope.launch {

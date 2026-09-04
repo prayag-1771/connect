@@ -97,7 +97,13 @@ class WatchWidgetProvider : AppWidgetProvider() {
             // ring cannot be laid across them.
             val unreadDot = active && WidgetCaptionStore.hasUnread(context)
             val choiceDot = active && WidgetCaptionStore.hasNewChoice(context)
-            val dots = WatchFaceRenderer.dotsOverlay(facePx, unreadDot, choiceDot)
+
+            // Deliberately not gated on the active window. A jam request is
+            // somebody waiting for an answer right now, and a face that hides
+            // it until evening would be answering for them.
+            val jamDot = WidgetCaptionStore.hasJamRequest(context)
+
+            val dots = WatchFaceRenderer.dotsOverlay(facePx, unreadDot, choiceDot, jamDot)
 
             if (dots == null) {
                 views.setViewVisibility(R.id.watch_dots, View.GONE)
@@ -122,6 +128,14 @@ class WatchWidgetProvider : AppWidgetProvider() {
 
             // The dots are drawn, not laid out, so they need a separate
             // invisible view over them to be tappable at all.
+            // A jam request outranks the unread dot for the tap target: it is
+            // a question somebody is waiting on, and there is only one corner.
+            if (jamDot) {
+                views.setViewVisibility(R.id.watch_unread_touch, View.VISIBLE)
+                views.setOnClickPendingIntent(R.id.watch_unread_touch, openJamRequest(context))
+                return views
+            }
+
             views.setViewVisibility(
                 R.id.watch_unread_touch,
                 if (unreadDot) View.VISIBLE else View.GONE,
@@ -227,12 +241,33 @@ class WatchWidgetProvider : AppWidgetProvider() {
             )
         }
 
+        /**
+         * Opens the app straight onto the pending jam request.
+         *
+         * The dot is only useful if tapping it answers the question, so this
+         * carries the reason rather than dropping somebody on the chat tab to
+         * find it themselves.
+         */
+        private fun openJamRequest(context: Context): PendingIntent {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(MainActivity.EXTRA_JAM_REQUEST, true)
+            }
+            return PendingIntent.getActivity(
+                context,
+                JAM_REQUEST,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
         private const val DEFAULT_FACE_DP = 160
 
         // Distinct request codes, or the two intents would overwrite each other.
         private const val APP_REQUEST = 0
         private const val CLOCK_REQUEST = 1
         private const val REPLY_REQUEST = 2
+        private const val JAM_REQUEST = 3
 
         /** Checked in order when the resolved package has no launcher entry. */
         private val KNOWN_CLOCK_PACKAGES = listOf(

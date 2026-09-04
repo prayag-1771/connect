@@ -6,6 +6,7 @@ import com.obsidian.connect.core.data.AuthRepository
 import com.obsidian.connect.core.data.JamRepository
 import com.obsidian.connect.core.data.UserRepository
 import com.obsidian.connect.core.model.JamSession
+import com.obsidian.connect.core.model.QueueItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,21 +53,37 @@ class JamViewModel @Inject constructor(
      * of about four shapes.
      */
     fun load(linkOrId: String, title: String = "") {
-        val id = extractVideoId(linkOrId)
-        if (id == null) {
-            _problem.value = "That does not look like a YouTube link."
-            return
-        }
-
         val pairing = pairingId.value ?: return
         val uid = authRepository.currentUid ?: return
+        val typed = linkOrId.trim()
+        if (typed.isEmpty()) return
+
         _problem.value = null
 
         viewModelScope.launch {
-            // Looked up rather than guessed. A pasted link has no title in it,
-            // and showing the URL back would say nothing.
-            val name = title.ifBlank { YouTubeSearch.titleFor(id).orEmpty() }
-            jamRepository.load(pairing, uid, id, name, JamSession.YOUTUBE)
+            // A link if it is one, a search if it is not. Typing a song name is
+            // faster than finding the link for it, and the search already picks
+            // a version the player will accept - so there is no reason to make
+            // this screen the only place that still demands a URL.
+            val id = extractVideoId(typed)
+            if (id != null) {
+                val name = title.ifBlank { YouTubeSearch.titleFor(id).orEmpty() }
+                jamRepository.load(pairing, uid, id, name, JamSession.YOUTUBE)
+                return@launch
+            }
+
+            if (!YouTubeSearch.isConfigured) {
+                _problem.value = "Paste a YouTube link, or add a key to search by name."
+                return@launch
+            }
+
+            val hit = YouTubeSearch.best(typed)
+            if (hit == null) {
+                _problem.value = "Could not find \"$typed\" on YouTube."
+                return@launch
+            }
+
+            jamRepository.load(pairing, uid, hit.videoId, hit.title, JamSession.YOUTUBE)
         }
     }
 
@@ -128,6 +145,88 @@ class JamViewModel @Inject constructor(
      */
     fun isDriver(session: JamSession?): Boolean =
         session?.byUid == authRepository.currentUid
+
+    /**
+     * Adds a song to the queue by name or link.
+     *
+     * Searched here rather than when its turn comes, so a track that cannot be
+     * found is reported while somebody is still looking at the screen instead
+     * of failing silently in twenty minutes.
+     */
+    fun enqueue(linkOrId: String) {
+        val pairing = pairingId.value ?: return
+        val typed = linkOrId.trim()
+        if (typed.isEmpty()) return
+
+        _problem.value = null
+
+        viewModelScope.launch {
+            val item = resolve(typed)
+            if (item == null) {
+                _problem.value = "Could not find \"$typed\"."
+                return@launch
+            }
+            jamRepository.enqueue(pairing, item)
+        }
+    }
+
+    fun removeFromQueue(item: QueueItem) {
+        val pairing = pairingId.value ?: return
+        viewModelScope.launch { jamRepository.dequeue(pairing, item) }
+    }
+
+    /**
+     * Plays whatever is next.
+     *
+     * Called when a track ends. With an empty queue it finds something rather
+     * than stopping - and never the same song twice in a session, which is what
+     * the played list is for.
+     */
+    fun playNext() {
+        val pairing = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+        val current = session.value ?: return
+
+        viewModelScope.launch {
+            val played = current.playedIds + current.videoId
+
+            val next = current.queue.firstOrNull()
+                ?: findSomethingNew(current.title, played)
+                ?: return@launch
+
+            jamRepository.advance(
+                pairingId = pairing,
+                uid = uid,
+                next = next,
+                remainingQueue = current.queue.drop(1),
+                played = played,
+            )
+        }
+    }
+
+    /**
+     * Something to follow on with when the queue is empty.
+     *
+     * Searched on the title that just finished, which keeps the next track in
+     * roughly the same territory, and filtered against what has already played
+     * so a two-song session does not become one song twice.
+     */
+    private suspend fun findSomethingNew(
+        after: String,
+        played: List<String>,
+    ): QueueItem? {
+        if (!YouTubeSearch.isConfigured || after.isBlank()) return null
+        val hits = YouTubeSearch.similar(after, exclude = played)
+        return hits.firstOrNull()?.let { QueueItem(it.videoId, it.title) }
+    }
+
+    private suspend fun resolve(typed: String): QueueItem? {
+        extractVideoId(typed)?.let { id ->
+            return QueueItem(id, YouTubeSearch.titleFor(id) ?: typed)
+        }
+        val hit = YouTubeSearch.best(typed) ?: return null
+        return QueueItem(hit.videoId, hit.title)
+    }
 
     fun end() {
         val pairing = pairingId.value ?: return
