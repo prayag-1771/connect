@@ -32,6 +32,8 @@ class JamPlayer(
     private val onStateChange: (playing: Boolean) -> Unit,
     private val onPositionMs: (Long) -> Unit,
     private val onError: (String) -> Unit = {},
+    private val onPhase: (String) -> Unit = {},
+    private val onFinished: () -> Unit = {},
 ) {
     val view: WebView = WebView(context).apply {
         settings.javaScriptEnabled = true
@@ -82,6 +84,12 @@ class JamPlayer(
 
         @JavascriptInterface
         fun failed(code: Int) = view.post { onError(explain(code)) }
+
+        @JavascriptInterface
+        fun phase(code: Int) = view.post { onPhase(describe(code)) }
+
+        @JavascriptInterface
+        fun finished() = view.post { onFinished() }
     }
 
     fun load(videoId: String, startMs: Long, play: Boolean) {
@@ -122,6 +130,22 @@ class JamPlayer(
         2 -> "That link was not something YouTube recognised."
         5 -> "The player could not handle that video."
         else -> "YouTube would not play that one (error $code)."
+    }
+
+    /**
+     * The player's own state, in words.
+     *
+     * Buffering is the one worth surfacing: it is indistinguishable from
+     * nothing happening, and on a slow connection it is most of what happens
+     * before a track starts.
+     */
+    private fun describe(code: Int): String = when (code) {
+        -1 -> "Loading"
+        1 -> "Playing"
+        2 -> "Paused"
+        3 -> "Buffering"
+        5 -> "Ready"
+        else -> ""
     }
 
     private fun run(js: String) {

@@ -8,6 +8,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,6 +89,15 @@ private fun ArchiveScreen(onBack: () -> Unit) {
 
     var pendingDelete by remember { mutableStateOf<PhotoArchive.Entry?>(null) }
 
+    // Selection mode, entered by holding a photo.
+    //
+    // Held by path rather than by entry, so it survives a re-list - the objects
+    // are rebuilt each time and would no longer match themselves.
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    val selecting = selected.isNotEmpty()
+
+    var confirmingBulk by remember { mutableStateOf(false) }
+
     // The viewer reports back whether the photo was deleted from inside it,
     // so the grid can drop it without re-listing on every recomposition.
     val viewer = rememberLauncherForActivityResult(
@@ -100,10 +113,35 @@ private fun ArchiveScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Photos") },
+                title = {
+                    Text(if (selecting) "${selected.size} selected" else "Photos")
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    IconButton(
+                        // Backing out of a selection should clear it rather
+                        // than leave the screen - the same gesture people use
+                        // everywhere else to mean "never mind".
+                        onClick = { if (selecting) selected = emptySet() else onBack() },
+                    ) {
+                        Icon(
+                            imageVector = if (selecting) {
+                                Icons.Filled.Close
+                            } else {
+                                Icons.AutoMirrored.Filled.ArrowBack
+                            },
+                            contentDescription = if (selecting) "Clear selection" else "Back",
+                        )
+                    }
+                },
+                actions = {
+                    if (selecting) {
+                        IconButton(onClick = { confirmingBulk = true }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Delete,
+                                contentDescription = "Delete selected",
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 },
             )
@@ -132,28 +170,77 @@ private fun ArchiveScreen(onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 items(items = entries, key = { it.file.path }) { entry ->
+                    val path = entry.file.path
                     Thumbnail(
                         entry = entry,
+                        checked = path in selected,
                         onClick = {
+                            // Once a selection exists, a tap adds to it rather
+                            // than opening - the alternative is opening a photo
+                            // every time somebody misses a checkbox.
+                            if (selecting) {
+                                selected = if (path in selected) {
+                                    selected - path
+                                } else {
+                                    selected + path
+                                }
+                                return@Thumbnail
+                            }
+
                             pendingDelete = entry
                             viewer.launch(
                                 PhotoViewerActivity.intent(
                                     context = context,
-                                    path = entry.file.path,
+                                    path = path,
                                     deletable = true,
                                 ),
                             )
                         },
+                        onLongClick = { selected = selected + path },
                     )
                 }
             }
         }
     }
 
+    if (confirmingBulk) {
+        AlertDialog(
+            onDismissRequest = { confirmingBulk = false },
+            title = { Text("Delete ${selected.size} photo${if (selected.size == 1) "" else "s"}?") },
+            // Asked because these are the only copies. The originals were never
+            // kept anywhere else, which is the whole point of this screen.
+            text = {
+                Text(
+                    "These are the only copies on this phone. They cannot be " +
+                        "brought back.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        entries.filter { it.file.path in selected }
+                            .forEach { PhotoArchive.delete(it) }
+                        selected = emptySet()
+                        confirmingBulk = false
+                        reload++
+                    },
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingBulk = false }) { Text("Keep them") }
+            },
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Thumbnail(entry: PhotoArchive.Entry, onClick: () -> Unit) {
+private fun Thumbnail(
+    entry: PhotoArchive.Entry,
+    checked: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val bitmap = remember(entry.file.path) {
         // Downsampled for the grid. Decoding a hundred full photos at once is
         // the reliable way to run a phone out of memory.
@@ -169,7 +256,7 @@ private fun Thumbnail(entry: PhotoArchive.Entry, onClick: () -> Unit) {
         modifier = Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         bitmap?.let {
             Image(
@@ -177,6 +264,23 @@ private fun Thumbnail(entry: PhotoArchive.Entry, onClick: () -> Unit) {
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        if (checked) {
+            // Dimmed as well as ticked. On a grid of photographs a small icon
+            // in a corner is easy to miss against a busy image; the wash is
+            // what makes the selection readable at a glance.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.45f)),
+            )
+            Icon(
+                imageVector = Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
             )
         }
     }

@@ -29,6 +29,12 @@ object CaptureTarget {
         val dir = File(context.cacheDir, DIR).apply { if (!exists()) mkdirs() }
         val file = File(dir, "capture_${System.currentTimeMillis()}.jpg")
 
+        // Tidying happens here, before the new file exists, rather than after a
+        // capture returns. Clearing afterwards deleted the photo that had just
+        // been taken: the editor reads it asynchronously, and the sweep ran
+        // first - which looked exactly like the camera doing nothing.
+        clearStale(context, keep = file)
+
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",

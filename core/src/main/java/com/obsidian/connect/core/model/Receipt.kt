@@ -23,7 +23,25 @@ data class Receipt(
 
     /** Newest message this person has had on screen. */
     val seenAtMillis: Long = 0L,
-)
+
+    /**
+     * When this person was last seen typing.
+     *
+     * A timestamp rather than a flag, so it expires by itself. A boolean would
+     * need clearing, and the one moment nobody can rely on is the app getting a
+     * chance to clean up - somebody who starts typing and locks their phone
+     * would otherwise appear to be typing forever.
+     */
+    val typingAtMillis: Long = 0L,
+) {
+    /** Typing is only news for a few seconds; after that it is a stale write. */
+    fun isTyping(now: Long = System.currentTimeMillis()): Boolean =
+        now - typingAtMillis in 0..TYPING_FOR_MS
+
+    private companion object {
+        const val TYPING_FOR_MS = 6_000L
+    }
+}
 
 /** Where a message has got to, from the sender's point of view. */
 enum class DeliveryStatus { Sent, Reached, Seen }

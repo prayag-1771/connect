@@ -302,6 +302,20 @@ class MessageRepository @Inject constructor(
     }
 
     /**
+     * Notes that somebody is typing.
+     *
+     * Merged into the receipt rather than given its own document, because the
+     * other phone already has a listener on that one - a second document would
+     * be a second live connection for one number.
+     */
+    suspend fun setTyping(pairingId: String, uid: String): Result<Unit> = runCatching {
+        receipts(pairingId).document(uid).set(
+            mapOf("typingAtMillis" to System.currentTimeMillis()),
+            SetOptions.merge(),
+        ).await()
+    }
+
+    /**
      * The newest message the other person sent.
      *
      * Fetches a handful and filters here rather than querying by sender.

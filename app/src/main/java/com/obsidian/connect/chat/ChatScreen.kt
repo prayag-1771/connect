@@ -9,6 +9,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Color
@@ -155,7 +161,6 @@ fun ChatScreen(
     ) { saved ->
         if (saved) pendingCapture?.let(::openEditor)
         pendingCapture = null
-        CaptureTarget.clearStale(context)
     }
 
     val cameraPermission = rememberLauncherForActivityResult(
@@ -231,6 +236,8 @@ fun ChatScreen(
         if (!panelOpen) return@LaunchedEffect
         when (panelTab) {
             AttachmentTab.Gifs -> if (gifs.isEmpty()) viewModel.searchGifs("")
+            // Starred GIFs are URLs on this phone; nothing to fetch.
+            AttachmentTab.Starred -> Unit
             AttachmentTab.Saved -> viewModel.refreshSaved()
         }
     }
@@ -269,6 +276,17 @@ fun ChatScreen(
     // of the oldest messages every time the tab opened. Reversed, the list
     // starts where it should and never has to move.
     val ordered = remember(messages) { messages.asReversed() }
+
+    // Reversed layout, so index zero is the newest and sits at the bottom.
+    //
+    // Only follows when you were already near the bottom. Yanking someone back
+    // down mid-way through reading last week would be worse than not following
+    // at all.
+    LaunchedEffect(messages.size) {
+        if (listState.firstVisibleItemIndex <= FOLLOW_WITHIN) {
+            runCatching { listState.animateScrollToItem(0) }
+        }
+    }
 
     // A message asked for from the starred list, which is a different screen
     // and cannot reach in here directly.
@@ -395,6 +413,12 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 reverseLayout = true,
             ) {
+                if (partnerReceipt?.isTyping() == true) {
+                    item(key = "typing") {
+                        TypingLine(palette = palette)
+                    }
+                }
+
                 items(items = ordered, key = { it.id }) { message ->
                     SwipeToReply(
                         mine = message.senderId == myUid,
@@ -1191,3 +1215,57 @@ private fun ReplyPreview(label: String, heading: String, onCancel: () -> Unit) {
         }
     }
 }
+
+/**
+ * Three dots, where the next message will appear.
+ *
+ * Sits with the newest messages rather than pinned above the composer, so it
+ * arrives in the conversation at the place the reply itself will - which is
+ * what makes it read as "something is coming" rather than as a status bar.
+ */
+@Composable
+private fun TypingLine(palette: ChatColors?) {
+    val transition = rememberInfiniteTransition(label = "typing")
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start,
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 4.dp))
+                .background(
+                    palette?.theirs ?: MaterialTheme.colorScheme.surfaceContainerHighest,
+                )
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            repeat(3) { index ->
+                // Staggered, so it reads as a wave rather than three dots
+                // blinking in unison.
+                val alpha by transition.animateFloat(
+                    initialValue = 0.25f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(600, delayMillis = index * 150),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                    label = "dot$index",
+                )
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(
+                            (palette?.onTheirs ?: MaterialTheme.colorScheme.onSurfaceVariant)
+                                .copy(alpha = alpha),
+                        ),
+                )
+            }
+        }
+    }
+}
+
+/** Within a couple of rows of the bottom still counts as being at the bottom. */
+private const val FOLLOW_WITHIN = 2

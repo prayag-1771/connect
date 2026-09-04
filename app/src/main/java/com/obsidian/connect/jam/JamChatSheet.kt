@@ -55,13 +55,16 @@ fun JamChatSheet(
     searchable: Boolean,
     onSend: (String) -> Unit,
     onEnd: () -> Unit,
+    onHide: () -> Unit,
 ) {
     var draft by remember { mutableStateOf("") }
 
     ModalBottomSheet(
-        // Dismissing is leaving, and leaving ends it for both. There is no
-        // quiet exit, because a room one person left is not a conversation.
-        onDismissRequest = onEnd,
+        // Swiping down or pressing back only puts the sheet away. It used to
+        // end the room outright, which meant a stray back gesture deleted the
+        // conversation for both people - a dismissal is not a decision, and
+        // treating it as one made the whole thing feel broken.
+        onDismissRequest = onHide,
     ) {
         Column(
             modifier = Modifier

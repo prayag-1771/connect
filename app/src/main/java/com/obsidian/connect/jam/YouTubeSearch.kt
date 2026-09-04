@@ -25,6 +25,36 @@ object YouTubeSearch {
     val isConfigured: Boolean get() = BuildConfig.YOUTUBE_KEY.isNotBlank()
 
     /**
+     * The title of a video, without needing a key.
+     *
+     * oEmbed is public and unauthenticated, which matters because a pasted link
+     * would otherwise show up as the link itself - and a jam whose now-playing
+     * line reads "https://youtu.be/..." is telling you nothing you did not just
+     * type.
+     */
+    suspend fun titleFor(videoId: String): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val url = "https://www.youtube.com/oembed" +
+                "?url=https://www.youtube.com/watch?v=$videoId&format=json"
+
+            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 10_000
+                readTimeout = 10_000
+            }
+
+            val text = try {
+                if (connection.responseCode !in 200..299) return@runCatching null
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } finally {
+                connection.disconnect()
+            }
+
+            JSONObject(text).optString("title").takeIf { it.isNotBlank() }
+        }.getOrNull()
+    }
+
+    /**
      * The single best match, or null.
      *
      * One result rather than a list on purpose: this is used by the jam chat,

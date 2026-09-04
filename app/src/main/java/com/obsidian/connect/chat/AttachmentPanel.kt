@@ -38,10 +38,18 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
 import coil.compose.AsyncImage
 import java.io.File
 
-enum class AttachmentTab { Gifs, Saved }
+enum class AttachmentTab { Gifs, Starred, Saved }
 
 /**
  * The GIF and saved-image drawer that sits above the keyboard.
@@ -85,6 +93,8 @@ fun AttachmentPanel(
                 onQuery = onGifQuery,
                 onSend = onSendGif,
             )
+
+            AttachmentTab.Starred -> StarredGifTab(onSend = onSendGif)
 
             AttachmentTab.Saved -> SavedTab(
                 saved = saved,
@@ -133,7 +143,9 @@ private fun GifTab(
         contentAlignment = Alignment.Center,
     ) {
         when {
-            loading -> CircularProgressIndicator()
+            // Only while there is nothing to look at yet. Once results are on
+            // screen, loading is shown over them rather than replacing them.
+            loading && gifs.isEmpty() -> CircularProgressIndicator()
 
             gifs.isEmpty() -> Text(
                 text = "Nothing found",
@@ -149,16 +161,62 @@ private fun GifTab(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(items = gifs, key = { it.id }) { gif ->
-                    AsyncImage(
-                        model = gif.previewUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onSend(gif) },
-                    )
+                    val gifContext = LocalContext.current
+                    var starred by remember(gif.id) {
+                        mutableStateOf(GifStore.isStarred(gifContext, gif.sendUrl))
+                    }
+
+                    Box {
+                        AsyncImage(
+                            model = gif.previewUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onSend(gif) },
+                        )
+
+                        // A corner button rather than a long press. Long press
+                        // on a small tile is easy to trigger by accident when
+                        // the tap next to it sends something.
+                        IconButton(
+                            onClick = {
+                                GifStore.toggle(gifContext, gif.sendUrl)
+                                starred = !starred
+                            },
+                            modifier = Modifier.align(Alignment.TopEnd).size(28.dp),
+                        ) {
+                            Icon(
+                                imageVector = if (starred) {
+                                    Icons.Filled.Star
+                                } else {
+                                    Icons.Outlined.StarBorder
+                                },
+                                contentDescription = if (starred) "Unstar" else "Star",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
                 }
+            }
+        }
+
+        // One spinner for the whole panel, over whatever is already there.
+        //
+        // A search replaces the results wholesale, so the old grid stays put
+        // and dims rather than vanishing - and because this sits in the Box
+        // rather than inside the grid, it stays centred on screen however far
+        // down somebody has scrolled.
+        if (loading && gifs.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
             }
         }
     }
@@ -240,3 +298,75 @@ private fun SavedThumbnail(file: File, onClick: () -> Unit) {
 
 private val PANEL_HEIGHT = 220.dp
 private const val THUMB_PX = 200
+
+/**
+ * The GIFs you kept.
+ *
+ * Only URLs are stored, so this is a grid of requests rather than a folder -
+ * which is also why it needs no clearing and costs no space.
+ */
+@Composable
+private fun StarredGifTab(onSend: (GifSearch.Gif) -> Unit) {
+    val context = LocalContext.current
+
+    // Re-read on each change rather than observed, because the only thing that
+    // edits this list is the star button a few pixels away.
+    var version by remember { mutableIntStateOf(0) }
+    val urls = remember(version) { GifStore.starred(context) }
+
+    if (urls.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = "Star a GIF and it waits here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        contentPadding = PaddingValues(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        items(items = urls, key = { it }) { url ->
+            Box {
+                AsyncImage(
+                    model = url,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            onSend(
+                                GifSearch.Gif(
+                                    id = url,
+                                    previewUrl = url,
+                                    sendUrl = url,
+                                ),
+                            )
+                        },
+                )
+
+                IconButton(
+                    onClick = {
+                        GifStore.toggle(context, url)
+                        version++
+                    },
+                    modifier = Modifier.align(Alignment.TopEnd).size(28.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = "Unstar",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+    }
+}

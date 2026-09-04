@@ -124,6 +124,12 @@ fun ChooseOverlay(
     }
 
     var confirmingDelete by remember { mutableStateOf<Choice?>(null) }
+
+    // Cards already deleted, dropped from the deck before Firestore has been
+    // asked. The write is quick, but the pager re-settling around a page that
+    // is still there reads as a stall - taking the card out first makes the
+    // gesture land immediately and the network catch up behind it.
+    var deleted by remember { mutableStateOf(setOf<String>()) }
     var side by remember { mutableStateOf(ChoiceSide.Mine) }
 
     // A referenced card can be on either side. Switch to whichever tab holds
@@ -157,7 +163,6 @@ fun ChooseOverlay(
     ) { saved ->
         if (saved) pendingCapture?.let(::openEditor)
         pendingCapture = null
-        CaptureTarget.clearStale(context)
     }
 
     val cameraPermission = rememberLauncherForActivityResult(
@@ -187,8 +192,9 @@ fun ChooseOverlay(
     // Split by who put it up. Your own deck is a list of questions waiting on
     // an answer; theirs is a list of answers waiting on you. Reading both in
     // one stack made it unclear which cards you were meant to act on.
-    val mine = remember(choices, myUid) { choices.filter { it.addedBy == myUid } }
-    val theirs = remember(choices, myUid) { choices.filter { it.addedBy != myUid } }
+    val live = remember(choices, deleted) { choices.filterNot { it.id in deleted } }
+    val mine = remember(live, myUid) { live.filter { it.addedBy == myUid } }
+    val theirs = remember(live, myUid) { live.filter { it.addedBy != myUid } }
 
     Box(
         modifier = modifier
@@ -263,6 +269,7 @@ fun ChooseOverlay(
             confirmButton = {
                 TextButton(
                     onClick = {
+                        deleted = deleted + choice.id
                         viewModel.delete(choice)
                         confirmingDelete = null
                     },

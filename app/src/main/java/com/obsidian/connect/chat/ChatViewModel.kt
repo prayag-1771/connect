@@ -436,6 +436,26 @@ class ChatViewModel @Inject constructor(
      * opens, so opening the camera tab does not silently mark unread messages
      * as read.
      */
+    private var lastTypingWrite = 0L
+
+    /**
+     * Tells them you are writing something.
+     *
+     * Throttled hard. Typing fires per keystroke and this is a network write -
+     * once every few seconds says the same thing for a fraction of the cost,
+     * and the other end treats the note as good for longer than the gap.
+     */
+    fun noteTyping() {
+        val id = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+
+        val now = System.currentTimeMillis()
+        if (now - lastTypingWrite < TYPING_THROTTLE_MS) return
+        lastTypingWrite = now
+
+        viewModelScope.launch { messageRepository.setTyping(id, uid) }
+    }
+
     fun markRead() {
         val newest = messages.value.maxOfOrNull { it.createdAtMillis } ?: return
         if (newest <= syncState.lastReadMessageAt) return
@@ -452,6 +472,9 @@ class ChatViewModel @Inject constructor(
 
         /** Long enough that typing does not fire a request per keystroke. */
         const val GIF_DEBOUNCE_MS = 350L
+
+        /** Comfortably shorter than the window the other end trusts it for. */
+        const val TYPING_THROTTLE_MS = 3_000L
 
         /** A card's reference list is a set of reminders, not a transcript. */
         const val REF_LENGTH = 120

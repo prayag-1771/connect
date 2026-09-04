@@ -3,6 +3,9 @@ package com.obsidian.connect.jam
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
@@ -31,6 +34,7 @@ object JamPlayerHolder {
     var onStateChange: ((Boolean) -> Unit)? = null
     var onPositionMs: ((Long) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
+    var onFinished: (() -> Unit)? = null
     var onReady: (() -> Unit)? = null
 
     var isReady: Boolean = false
@@ -40,6 +44,10 @@ object JamPlayerHolder {
         private set
 
     var loadedVideoId: String = ""
+        private set
+
+    /** What the player is doing, for a screen that wants to say so. */
+    var phase: String by mutableStateOf("")
         private set
 
     /**
@@ -76,6 +84,8 @@ object JamPlayerHolder {
                 onPositionMs?.invoke(position)
             },
             onError = { message -> onError?.invoke(message) },
+            onPhase = { described -> phase = described },
+            onFinished = { onFinished?.invoke() },
         )
 
         player = created
@@ -178,6 +188,7 @@ object JamPlayerHolder {
         pending = null
         loadedVideoId = ""
         lastPositionMs = 0L
+        phase = ""
     }
 
     private const val TAG = "JamPlayerHolder"

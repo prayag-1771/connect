@@ -63,7 +63,10 @@ class JamViewModel @Inject constructor(
         _problem.value = null
 
         viewModelScope.launch {
-            jamRepository.load(pairing, uid, id, title, JamSession.YOUTUBE)
+            // Looked up rather than guessed. A pasted link has no title in it,
+            // and showing the URL back would say nothing.
+            val name = title.ifBlank { YouTubeSearch.titleFor(id).orEmpty() }
+            jamRepository.load(pairing, uid, id, name, JamSession.YOUTUBE)
         }
     }
 

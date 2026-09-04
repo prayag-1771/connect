@@ -106,6 +106,10 @@ private fun JamScreen(
     val problem by viewModel.problem.collectAsStateWithLifecycle()
 
     val chatViewModel: JamChatViewModel = hiltViewModel()
+
+    // Put away rather than ended. The room stays open; the sheet is just not
+    // on screen, and the Jam chat button brings it back.
+    var chatHidden by remember { mutableStateOf(false) }
     val room by chatViewModel.room.collectAsStateWithLifecycle()
     val chatMessages by chatViewModel.messages.collectAsStateWithLifecycle()
 
@@ -153,7 +157,13 @@ private fun JamScreen(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f),
             )
-            OutlinedButton(onClick = { chatViewModel.start() }) { Text("Jam chat") }
+            OutlinedButton(
+                onClick = {
+                    chatHidden = false
+                    // Already running - reopening should not wipe what was said.
+                    if (room?.isLive != true) chatViewModel.start()
+                },
+            ) { Text("Jam chat") }
 
             if (session?.isLoaded == true) {
                 Spacer(Modifier.size(8.dp))
@@ -189,6 +199,17 @@ private fun JamScreen(
                     text = current.title.ifBlank { "Playing together" },
                     style = MaterialTheme.typography.titleMedium,
                 )
+
+                // What the player is actually doing. Buffering in particular
+                // is indistinguishable from nothing happening, and on a slow
+                // connection it is most of what happens before a track starts.
+                JamPlayerHolder.phase.takeIf { it.isNotBlank() }?.let { phase ->
+                    Text(
+                        text = phase,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 Text(
                     text = if (viewModel.theyAreHere(session)) {
                         "They are here too. Either of you can take the controls."
@@ -255,8 +276,16 @@ private fun JamScreen(
         messages = chatMessages,
         myUid = chatViewModel.myUid,
         spotify = spotify,
-        onJoin = chatViewModel::join,
-        onEnd = chatViewModel::end,
+        hidden = chatHidden,
+        onJoin = {
+            chatViewModel.join()
+            chatHidden = false
+        },
+        onEnd = {
+            chatViewModel.end()
+            chatHidden = false
+        },
+        onHide = { chatHidden = true },
         onSend = { text -> chatViewModel.send(text, spotify) },
     )
 }
@@ -273,8 +302,10 @@ private fun JamChatLayer(
     messages: List<com.obsidian.connect.core.model.JamChatMessage>,
     myUid: String?,
     spotify: Boolean,
+    hidden: Boolean,
     onJoin: () -> Unit,
     onEnd: () -> Unit,
+    onHide: () -> Unit,
     onSend: (String) -> Unit,
 ) {
     val current = room ?: return
@@ -288,6 +319,8 @@ private fun JamChatLayer(
         return
     }
 
+    if (hidden) return
+
     JamChatSheet(
         messages = messages,
         myUid = myUid,
@@ -295,6 +328,7 @@ private fun JamChatLayer(
         searchable = spotify || YouTubeSearch.isConfigured,
         onSend = onSend,
         onEnd = onEnd,
+        onHide = onHide,
     )
 }
 

@@ -26,6 +26,9 @@ import com.obsidian.connect.widget.WatchWidgetProvider
 import com.obsidian.connect.widget.WidgetCaptionStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -61,6 +64,15 @@ class WidgetLiveUpdater @Inject constructor(
     private val jamRepository: JamRepository,
     private val syncState: SyncState,
 ) {
+
+    /**
+     * For work that starts from a callback rather than from a collector.
+     *
+     * The player reports a finished track through a listener, which has no
+     * coroutine of its own to write the result back on. This singleton lives as
+     * long as the process, so the scope can too.
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /** The signed-in user's pairing, and who is on the other side of it. */
     private fun pairing(): Flow<Pair<String, String>?> = authRepository.uidFlow
@@ -157,10 +169,20 @@ class WidgetLiveUpdater @Inject constructor(
     suspend fun watchJam() {
         pairing()
             .flatMapLatest { current ->
-                if (current == null) flowOf(null) else jamRepository.observe(current.first)
+                if (current == null) {
+                    flowOf(null)
+                } else {
+                    // The pairing id is carried through, because ending a track
+                    // needs to write back and the session itself does not say
+                    // which pairing it belongs to.
+                    jamRepository.observe(current.first).map { current.first to it }
+                }
             }
-            .collect { session ->
-                if (session == null || !session.isLoaded) {
+            .collect { pair ->
+                val pairingId = pair?.first
+                val session = pair?.second
+
+                if (pairingId == null || session == null || !session.isLoaded) {
                     withContext(Dispatchers.Main) {
                         JamPlayerHolder.release(context)
                         JamService.stop(context)
@@ -185,6 +207,14 @@ class WidgetLiveUpdater @Inject constructor(
                 }
 
                 withContext(Dispatchers.Main) {
+                    // A track running out is the one state change nothing else
+                    // reports. Without this the session goes on claiming to be
+                    // playing, and the pause button in the chat offers to stop
+                    // silence.
+                    JamPlayerHolder.onFinished = {
+                        scope.launch { jamRepository.update(pairingId, uid, false, 0L) }
+                    }
+
                     // Started before the player, so the platform already knows
                     // this process is making sound by the time it does.
                     if (session.playing) {
