@@ -46,7 +46,16 @@ data class JamChatRoom(
 
     fun hasJoined(uid: String): Boolean = uid in participants
 
-    fun isWaitingFor(uid: String): Boolean = isLive && !hasJoined(uid)
+    /**
+     * Whether this person is being asked to come in.
+     *
+     * A live room they have not joined is not the same as an invitation. The
+     * other person may be sitting in one alone quite happily, and putting a
+     * dialog in front of somebody for that would be the app asking on their
+     * behalf.
+     */
+    fun isWaitingFor(uid: String): Boolean =
+        isLive && !hasJoined(uid) && requestedAtMillis > declinedAtMillis
 
     /** Both people are in it. */
     val isAnswered: Boolean get() = participants.size >= 2

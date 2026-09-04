@@ -278,6 +278,8 @@ fun AppLockCard() {
     var fingerprint by remember { mutableStateOf(AppLock.isFingerprintEnabled(context)) }
     var hasPin by remember { mutableStateOf(AppLock.hasOwnPin(context)) }
     var settingPin by remember { mutableStateOf(false) }
+    var hasDecoy by remember { mutableStateOf(AppLock.hasDecoyPin(context)) }
+    var settingDecoy by remember { mutableStateOf(false) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -377,6 +379,52 @@ fun AppLockCard() {
                 if (hasPin) {
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(onClick = { settingPin = true }) { Text("Change PIN") }
+
+                    Spacer(Modifier.height(14.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "A PIN that opens the clock",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                text = if (hasDecoy) {
+                                    "Set. Typing it here opens the clock instead " +
+                                        "of Connect."
+                                } else {
+                                    "For being asked to unlock this with somebody " +
+                                        "watching. Set it to your phone PIN and " +
+                                        "that number opens the clock."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = hasDecoy,
+                            onCheckedChange = { wanted ->
+                                if (wanted) {
+                                    settingDecoy = true
+                                } else {
+                                    AppLock.clearDecoyPin(context)
+                                    hasDecoy = false
+                                }
+                            },
+                        )
+                    }
+
+                    if (hasDecoy) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(onClick = { settingDecoy = true }) {
+                            Text("Change it")
+                        }
+                    }
                 }
             }
         }
@@ -384,11 +432,33 @@ fun AppLockCard() {
 
     if (settingPin) {
         PinDialog(
+            title = "Set a PIN",
+            note = "Four to eight digits. Nothing can reset this for you, so " +
+                "pick one you will not forget.",
             onDismiss = { settingPin = false },
             onSet = { pin ->
                 AppLock.setOwnPin(context, pin)
                 hasPin = true
                 settingPin = false
+            },
+        )
+    }
+
+    if (settingDecoy) {
+        PinDialog(
+            title = "Set the clock PIN",
+            note = "Typing this instead of your real PIN opens the phone clock " +
+                "and closes Connect. Your phone PIN is the useful choice: then " +
+                "anybody who knows it gets the clock.",
+            onDismiss = { settingDecoy = false },
+            onSet = { pin ->
+                // Refused rather than allowed and regretted: the same number
+                // for both would make the real PIN open the clock.
+                if (AppLock.checkPin(context, pin)) return@PinDialog
+
+                AppLock.setDecoyPin(context, pin)
+                hasDecoy = true
+                settingDecoy = false
             },
         )
     }
@@ -402,7 +472,12 @@ fun AppLockCard() {
  * server to reset it with.
  */
 @Composable
-private fun PinDialog(onDismiss: () -> Unit, onSet: (String) -> Unit) {
+private fun PinDialog(
+    title: String,
+    note: String,
+    onDismiss: () -> Unit,
+    onSet: (String) -> Unit,
+) {
     var first by remember { mutableStateOf("") }
     var second by remember { mutableStateOf("") }
 
@@ -411,12 +486,11 @@ private fun PinDialog(onDismiss: () -> Unit, onSet: (String) -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Set a PIN") },
+        title = { Text(title) },
         text = {
             Column {
                 Text(
-                    text = "Four to eight digits. Nothing can reset this for you, " +
-                        "so pick one you will not forget.",
+                    text = note,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

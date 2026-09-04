@@ -12,6 +12,7 @@ import android.view.View
 import android.widget.RemoteViews
 import com.obsidian.connect.HomeTab
 import com.obsidian.connect.MainActivity
+import com.obsidian.connect.lock.ClockApp
 import com.obsidian.connect.chat.QuickReplyActivity
 import com.obsidian.connect.R
 
@@ -202,29 +203,8 @@ class WatchWidgetProvider : AppWidgetProvider() {
             )
         }
 
-        private fun clockIntent(context: Context): Intent? {
-            val pm = context.packageManager
-
-            val candidates = buildList {
-                pm.resolveActivity(Intent(AlarmClock.ACTION_SHOW_ALARMS), 0)
-                    ?.activityInfo
-                    ?.packageName
-                    ?.let(::add)
-                addAll(KNOWN_CLOCK_PACKAGES)
-            }
-
-            candidates.forEach { pkg ->
-                pm.getLaunchIntentForPackage(pkg)?.let {
-                    return it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            }
-
-            // Nothing launchable found. The bare action is still better than
-            // nothing on a device that does implement it properly.
-            val showAlarms = Intent(AlarmClock.ACTION_SHOW_ALARMS)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            return showAlarms.takeIf { pm.resolveActivity(it, 0) != null }
-        }
+        private fun clockIntent(context: Context): Intent? =
+            ClockApp.intent(context)
 
         private fun openApp(context: Context): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {

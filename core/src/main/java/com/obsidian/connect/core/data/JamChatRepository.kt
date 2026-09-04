@@ -50,8 +50,12 @@ class JamChatRepository @Inject constructor(
                 "startedBy" to uid,
                 "participants" to listOf(uid),
                 "startedAtMillis" to System.currentTimeMillis(),
-                // Opening a room is itself an invitation.
-                "requestedAtMillis" to System.currentTimeMillis(),
+                // Zero, not now. Opening a room is not asking anybody to join
+                // it - treating it as an invitation made the button read Asked
+                // before anybody had pressed anything, and would have put a
+                // dialog in front of the other person unprompted.
+                "requestedAtMillis" to 0L,
+                "declinedAtMillis" to 0L,
             ),
         ).await()
     }

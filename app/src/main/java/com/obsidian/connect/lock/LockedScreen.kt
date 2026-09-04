@@ -1,5 +1,6 @@
 package com.obsidian.connect.lock
 
+import android.app.Activity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -115,12 +116,25 @@ fun LockedScreen(
 
             Button(
                 onClick = {
-                    if (AppLock.checkPin(context, pin)) {
-                        pin = ""
-                        onUnlocked()
-                    } else {
-                        wrong = true
-                        pin = ""
+                    when {
+                        AppLock.checkPin(context, pin) -> {
+                            pin = ""
+                            onUnlocked()
+                        }
+
+                        // Away to the clock, and this screen is finished with.
+                        // Nothing is said about it having been the decoy: the
+                        // point is that it looks like an ordinary outcome.
+                        AppLock.checkDecoyPin(context, pin) -> {
+                            pin = ""
+                            ClockApp.open(context)
+                            (context as? Activity)?.finish()
+                        }
+
+                        else -> {
+                            wrong = true
+                            pin = ""
+                        }
                     }
                 },
                 enabled = pin.length >= MIN_PIN,

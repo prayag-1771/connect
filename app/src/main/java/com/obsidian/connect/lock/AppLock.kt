@@ -26,6 +26,8 @@ object AppLock {
     private const val KEY_FINGERPRINT = "fingerprint"
     private const val KEY_PIN_HASH = "pin_hash"
     private const val KEY_PIN_SALT = "pin_salt"
+    private const val KEY_DECOY_HASH = "decoy_hash"
+    private const val KEY_DECOY_SALT = "decoy_salt"
 
     /**
      * Fingerprint or face, with PIN, pattern or password as the fallback.
@@ -111,6 +113,42 @@ object AppLock {
 
     fun clearOwnPin(context: Context) {
         prefs(context).edit().remove(KEY_PIN_HASH).remove(KEY_PIN_SALT).apply()
+    }
+
+    /**
+     * A second PIN that opens the clock instead of the app.
+     *
+     * For being asked to unlock this by somebody who is standing there. The
+     * decoy behaves like a wrong guess would not - the app closes and the
+     * phone clock comes up, which looks like an app that simply is not what
+     * they thought it was.
+     *
+     * Android never lets an app read the phone credential, so this cannot
+     * literally recognise the screen-lock PIN. Setting the decoy to that same
+     * number is what makes it behave as though it does.
+     */
+    fun hasDecoyPin(context: Context): Boolean =
+        prefs(context).getString(KEY_DECOY_HASH, null) != null
+
+    fun setDecoyPin(context: Context, pin: String) {
+        val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        prefs(context).edit()
+            .putString(KEY_DECOY_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
+            .putString(KEY_DECOY_HASH, hash(pin, salt))
+            .apply()
+    }
+
+    fun clearDecoyPin(context: Context) {
+        prefs(context).edit().remove(KEY_DECOY_HASH).remove(KEY_DECOY_SALT).apply()
+    }
+
+    fun checkDecoyPin(context: Context, pin: String): Boolean {
+        val stored = prefs(context).getString(KEY_DECOY_HASH, null) ?: return false
+        val salt = prefs(context).getString(KEY_DECOY_SALT, null)
+            ?.let { Base64.decode(it, Base64.NO_WRAP) }
+            ?: return false
+
+        return hash(pin, salt) == stored
     }
 
     fun checkPin(context: Context, pin: String): Boolean {
