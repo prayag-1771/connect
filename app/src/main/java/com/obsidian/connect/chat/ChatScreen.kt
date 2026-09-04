@@ -276,7 +276,7 @@ fun ChatScreen(
 
     // Marking read here rather than at app launch: opening the camera tab
     // should not quietly clear the dot for messages nobody has looked at.
-    LaunchedEffect(messages.size) {
+    LaunchedEffect(messages) {
         viewModel.markRead()
         viewModel.archiveIncoming(messages)
         viewModel.markProgress(messages)
@@ -632,11 +632,19 @@ fun ChatScreen(
 
             OutlinedTextField(
                 value = draft,
-                onValueChange = { draft = it },
+                onValueChange = {
+                    draft = it
+                    viewModel.noteTyping()
+                },
                 placeholder = { Text(if (recording) "Recording…" else "Say something") },
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 4,
                 enabled = !recording,
+                // Their presence, on the border of the thing you type into.
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = presenceGlow,
+                    unfocusedBorderColor = presenceGlow,
+                ),
                 modifier = Modifier.weight(1f),
             )
 
