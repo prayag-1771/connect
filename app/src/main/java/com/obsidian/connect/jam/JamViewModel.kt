@@ -170,27 +170,47 @@ class JamViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Moves one track up or down the queue.
-     *
-     * Buttons rather than a drag. The queue lives in a scrolling column of
-     * mixed content rather than a list, so there is no layout to measure a drag
-     * against - and for a handful of songs, two taps that always land beat a
-     * gesture that sometimes does.
-     */
-    fun moveInQueue(item: QueueItem, up: Boolean) {
+    /** Writes a hand-arranged running order. */
+    fun reorderQueue(queue: List<QueueItem>) {
         val pairing = pairingId.value ?: return
-        val queue = session.value?.queue.orEmpty()
+        viewModelScope.launch { jamRepository.reorderQueue(pairing, queue) }
+    }
 
-        val index = queue.indexOf(item)
-        val target = if (up) index - 1 else index + 1
-        if (index < 0 || target !in queue.indices) return
+    /**
+     * Back one track, or back to the start of this one.
+     *
+     * The usual behaviour of a previous button, and the useful one: most of the
+     * time it is pressed to hear the current song again from the top, not to
+     * leave it.
+     */
+    fun playPrevious() {
+        val pairing = pairingId.value ?: return
+        val uid = authRepository.currentUid ?: return
+        val current = session.value ?: return
 
-        val reordered = queue.toMutableList().apply {
-            set(index, set(target, item))
+        if (JamPlayerHolder.lastPositionMs > RESTART_WINDOW_MS) {
+            viewModelScope.launch { jamRepository.update(pairing, uid, true, 0L) }
+            return
         }
 
-        viewModelScope.launch { jamRepository.reorderQueue(pairing, reordered) }
+        val previous = current.playedIds.lastOrNull()
+        if (previous == null) {
+            viewModelScope.launch { jamRepository.update(pairing, uid, true, 0L) }
+            return
+        }
+
+        viewModelScope.launch {
+            val title = YouTubeSearch.titleFor(previous).orEmpty()
+            jamRepository.advance(
+                pairingId = pairing,
+                uid = uid,
+                next = QueueItem(previous, title),
+                // The song being left goes back to the front, so skipping back
+                // and forward again returns to where you were.
+                remainingQueue = listOf(QueueItem(current.videoId, current.title)) + current.queue,
+                played = current.playedIds.dropLast(1),
+            )
+        }
     }
 
     fun removeFromQueue(item: QueueItem) {
@@ -280,6 +300,9 @@ class JamViewModel @Inject constructor(
 
     private companion object {
         const val STOP_TIMEOUT = 5_000L
+
+        /** Past this, previous means "start this again" rather than "go back". */
+        const val RESTART_WINDOW_MS = 4_000L
     }
 }
 

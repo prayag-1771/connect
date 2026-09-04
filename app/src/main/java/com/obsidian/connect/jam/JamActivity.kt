@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
@@ -34,6 +36,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import com.obsidian.connect.reminders.DragHandle
+import com.obsidian.connect.reminders.rememberReorderState
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -282,6 +292,241 @@ private fun JamScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    IconButton(
+                        onClick = viewModel::playPrevious,
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SkipPrevious,
+                            contentDescription = "Previous",
+                        )
+                    }
+
+                    FilledIconButton(
+                        onClick = {
+                            viewModel.report(!playing, JamPlayerHolder.lastPositionMs)
+                        },
+                        modifier = Modifier.size(56.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (playing) {
+                                Icons.Filled.Pause
+                            } else {
+                                Icons.Filled.PlayArrow
+                            },
+                            contentDescription = if (playing) "Pause" else "Play",
+                        )
+                    }
+
+                    IconButton(
+                        onClick = viewModel::playNext,
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SkipNext,
+                            contentDescription = "Next",
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            OutlinedTextField(
+                value = link,
+                onValueChange = { link = it },
+                label = { Text("A song name, or a link") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Button(
+                onClick = {
+                    viewModel.load(link)
+                    link = ""
+                },
+                enabled = link.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Put it on for both of us") }
+
+            // The queue, under the thing that starts a track - which is where
+            // somebody already is when they think of the next one.
+            val queue = session?.queue.orEmpty()
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = queued,
+                    onValueChange = { queued = it },
+                    label = { Text("Add to the queue") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedButton(
+                    onClick = {
+                        viewModel.enqueue(queued)
+                        queued = ""
+                    },
+                    enabled = queued.isNotBlank(),
+                ) { Text("Add") }
+            }
+
+            if (queue.isNotEmpty()) {
+                Text(
+                    text = "Up next",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                // A working copy the drag rearranges, so a track follows the
+                // finger instead of waiting on a round trip.
+                var arranged by remember(queue) { mutableStateOf(queue) }
+                val queueState = rememberLazyListState()
+                val reorder = rememberReorderState(
+                    listState = queueState,
+                    onMove = { from, to ->
+                        arranged = arranged.toMutableList().apply {
+                            if (from in indices && to in indices) add(to, removeAt(from))
+                        }
+                    },
+                    onSettled = { viewModel.reorderQueue(arranged) },
+                )
+
+                LazyColumn(
+                    state = queueState,
+                    // Capped, so a long queue does not push the controls off
+                    // the bottom of a scrolling screen.
+                    modifier = Modifier.heightIn(max = 220.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    items(items = arranged, key = { it.videoId }) { item ->
+                        val dragging = reorder.isDragging(item.videoId)
+                        val translation = if (dragging) reorder.offset else 0f
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .zIndex(if (dragging) 1f else 0f)
+                                .graphicsLayer { translationY = translation }
+                                .then(if (dragging) Modifier else Modifier.animateItem()),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = item.title.ifBlank { item.videoId },
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = { viewModel.removeFromQueue(item) },
+                                modifier = Modifier.size(30.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "Remove",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                            DragHandle(
+                                onStart = { reorder.start(item.videoId) },
+                                onDrag = reorder::drag,
+                                onEnd = reorder::stop,
+                            )
+                        }
+                    }
+                }
+            }
+
+            problem?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+            }
+            return@Column
+        }
+
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            val current = session
+            if (current?.isLoaded == true) {
+                Text(
+                    text = current.title.ifBlank { "Playing together" },
+                    style = MaterialTheme.typography.titleMedium,
+                )
+
+                // What the player is actually doing. Buffering in particular
+                // is indistinguishable from nothing happening, and on a slow
+                // connection it is most of what happens before a track starts.
+                JamPlayerHolder.phase.takeIf { it.isNotBlank() }?.let { phase ->
+                    Text(
+                        text = phase,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Text(
+                    text = if (viewModel.theyAreHere(session)) {
+                        "They are here too. Either of you can take the controls."
+                    } else {
+                        "Playing. They will drop straight into this when they open it."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                val duration = JamPlayerHolder.durationMs
+                val position = JamPlayerHolder.positionMs
+
+                if (duration > 0) {
+                    // Dragged locally, written once on release. Writing every
+                    // frame of a drag would be a Firestore write per pixel and
+                    // would fight the other phone the whole way across.
+                    var scrubbing by remember { mutableStateOf<Float?>(null) }
+
+                    Slider(
+                        value = scrubbing ?: position.toFloat().coerceIn(0f, duration.toFloat()),
+                        onValueChange = { scrubbing = it },
+                        onValueChangeFinished = {
+                            scrubbing?.let { target ->
+                                viewModel.report(playing, target.toLong())
+                                JamPlayerHolder.seekTo(context, target.toLong())
+                            }
+                            scrubbing = null
+                        },
+                        valueRange = 0f..duration.toFloat(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = clock((scrubbing?.toLong() ?: position)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = clock(duration),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     FilledIconButton(
                         onClick = {
                             viewModel.report(!playing, JamPlayerHolder.lastPositionMs)
@@ -350,55 +595,6 @@ private fun JamScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
-                queue.forEachIndexed { index, item ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "${index + 1}. ${item.title.ifBlank { item.videoId }}",
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        IconButton(
-                            onClick = { viewModel.moveInQueue(item, up = true) },
-                            enabled = index > 0,
-                            modifier = Modifier.size(30.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.KeyboardArrowUp,
-                                contentDescription = "Move up",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                        IconButton(
-                            onClick = { viewModel.moveInQueue(item, up = false) },
-                            enabled = index < queue.lastIndex,
-                            modifier = Modifier.size(30.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.KeyboardArrowDown,
-                                contentDescription = "Move down",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                        IconButton(
-                            onClick = { viewModel.removeFromQueue(item) },
-                            modifier = Modifier.size(30.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "Remove",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
-                }
             }
 
             problem?.let {
